@@ -77,10 +77,11 @@ Tap the connected display and inspect the server log. A valid contact produces
 one entry similar to:
 
 ```text
-level=INFO msg="touch event" uuid=... x=99 y=54 raw_x=924 raw_y=703
+level=INFO msg="touch event" uuid=... frame_id=3946585767 x=99 y=54 raw_x=924 raw_y=703
 ```
 
-`x` and `y` use the physical top-left-origin screen coordinate system. `raw_x`
+`frame_id` identifies the image visible when contact occurred. `x` and `y` use
+the physical top-left-origin screen coordinate system. `raw_x`
 and `raw_y` retain the panel-native 180-degree-rotated values for diagnostics.
 No touch record is saved in SQLite or sent to the HTTP event stream yet.
 

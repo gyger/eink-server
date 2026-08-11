@@ -23,13 +23,18 @@ Completed:
    sequence, then `8, 0, 1, 0`. Correlate the echoed sequence for diagnostics,
    but continue using a later status frame-ID echo as the authoritative
    `delivered` signal. The precise names of the `8, 0, 1` fields remain unknown.
-- Type-6 touch records have a strict fixture-tested decoder. Native coordinates
-  are converted to physical display coordinates and written to the logfile as
-  `touch event`; they are deliberately not persisted, published, or rendered.
+- Type-6 touch records have a fixture-tested decoder. The 2026-08-11 live retest
+  identified logical offset 36 as the displayed frame ID rather than a constant
+  zero. The decoder now accepts and exposes it, and the logfile includes it with
+  physical and raw coordinates. A second physical retest passed: three taps on
+  visible dashboard regions logged the expected frame ID and coordinates with
+  no decoder warnings.
 
 Still to implement:
 
-1. Publish the observed touch abstraction as `touch.tap` when the project is
+1. Decide whether to reject, ignore, or mark a touch whose frame ID does not
+   match the current interactive frame, and test that stale-input path.
+2. Publish the observed touch abstraction as `touch.tap` when the project is
    ready to consume touch outside the logfile. Quick taps, a
    three-second hold, and a slow drag each produced one record; the drag reported
    its initial contact and no down/move/up stream was observed. Do not synthesize
@@ -107,6 +112,13 @@ normal unattended operation:
 
 - Queue an image while the tablet is offline and verify delivery after reconnect.
 - Restart the server with a queued assignment and verify SQLite recovery.
+- Reconcile the screen after every reconnect. A tablet may replace its previous
+  content with an offline-symbol screen while the server is unavailable, even
+  though SQLite still marks the latest desired assignment as `delivered`. Compare
+  the reconnect status/display-state ID with the latest desired frame ID and
+  resend that frame whenever they differ. If the device has no desired frame,
+  optionally send a small built-in "connected" acknowledgement screen so the
+  stale offline symbol is cleared.
 - Replace an active connection with a new connection for the same UUID.
 - Upload several images rapidly and verify only the newest desired image matters.
 - Interrupt a transfer and confirm it retries safely on a later connection.
@@ -119,6 +131,8 @@ Exit criteria:
 - No duplicate or interleaved PV3 writes.
 - A failed tablet does not affect other devices.
 - Restart and reconnect behavior requires no manual database repair.
+- A reconnect restores the latest desired screen, or a documented connected
+  fallback, instead of leaving the tablet's offline-symbol screen visible.
 
 ## 3. Turn remaining protocol assumptions into tests
 

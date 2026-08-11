@@ -160,7 +160,7 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 				g.Log.Warn("touch coordinate rejected", "uuid", uuid, "raw_x", touch.RawX, "raw_y", touch.RawY, "width", width, "height", height, "error", err)
 				continue
 			}
-			g.Log.Info("touch event", "uuid", uuid, "x", x, "y", y, "raw_x", touch.RawX, "raw_y", touch.RawY)
+			g.Log.Info("touch event", "uuid", uuid, "frame_id", touch.FrameID, "x", x, "y", y, "raw_x", touch.RawX, "raw_y", touch.RawY)
 			continue
 		}
 		if messageType != pv3.MessageStatus {

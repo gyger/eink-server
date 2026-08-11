@@ -83,14 +83,16 @@ func TestParseCapturedTouchEvents(t *testing.T) {
 		file    string
 		rawX    uint32
 		rawY    uint32
+		frameID uint32
 		x       uint32
 		y       uint32
 	}{
-		{"2026-08-11-touch-01", "02-type-3-length-76.bin", 924, 703, 99, 54},
-		{"2026-08-11-touch-01", "03-type-3-length-76.bin", 491, 399, 532, 358},
-		{"2026-08-11-touch-01", "04-type-3-length-76.bin", 100, 37, 923, 720},
-		{"2026-08-11-touch-02", "01-type-3-length-76.bin", 512, 415, 511, 342},
-		{"2026-08-11-touch-02", "02-type-3-length-76.bin", 968, 413, 55, 344},
+		{"2026-08-11-touch-01", "02-type-3-length-76.bin", 924, 703, 0, 99, 54},
+		{"2026-08-11-touch-01", "03-type-3-length-76.bin", 491, 399, 0, 532, 358},
+		{"2026-08-11-touch-01", "04-type-3-length-76.bin", 100, 37, 0, 923, 720},
+		{"2026-08-11-touch-02", "01-type-3-length-76.bin", 512, 415, 0, 511, 342},
+		{"2026-08-11-touch-02", "02-type-3-length-76.bin", 968, 413, 0, 55, 344},
+		{"2026-08-11-touch-server-retest-01", "01-type-3-length-76.bin", 508, 417, 0xeb3c1ea7, 515, 340},
 	}
 	for _, tc := range tests {
 		raw := fixture(t, tc.capture, "tablet-records", tc.file)
@@ -102,7 +104,7 @@ func TestParseCapturedTouchEvents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if touch.UUID != "30004f00-0650-4858-5239-312000000000" || touch.RawX != tc.rawX || touch.RawY != tc.rawY {
+		if touch.UUID != "30004f00-0650-4858-5239-312000000000" || touch.RawX != tc.rawX || touch.RawY != tc.rawY || touch.FrameID != tc.frameID {
 			t.Fatalf("%s touch=%+v", tc.file, touch)
 		}
 		x, y, err := touch.PhysicalCoordinates(1024, 758)
@@ -118,7 +120,7 @@ func TestRejectMalformedTouch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec.Payload[36] = 1
+	rec.Payload[40] = 1
 	if _, err := ParseTouch(rec); err == nil {
 		t.Fatal("malformed touch accepted")
 	}

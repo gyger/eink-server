@@ -5,6 +5,7 @@ import "errors"
 type Touch struct {
 	UUID      string
 	UUIDBytes [16]byte
+	FrameID   uint32
 	RawX      uint32
 	RawY      uint32
 }
@@ -18,13 +19,14 @@ func ParseTouch(rec Record) (Touch, error) {
 	p := rec.Payload
 	if le.Uint32(p[0:4]) != 0 || le.Uint32(p[20:24]) != MessageTouch ||
 		le.Uint32(p[24:28]) != 0xffffffff || le.Uint32(p[28:32]) != 20 ||
-		le.Uint32(p[32:36]) != 0 || le.Uint32(p[36:40]) != 0 ||
-		le.Uint32(p[40:44]) != 0 || le.Uint32(p[44:48]) != 0 {
+		le.Uint32(p[32:36]) != 0 || le.Uint32(p[40:44]) != 0 ||
+		le.Uint32(p[44:48]) != 0 {
 		return Touch{}, errors.New("invalid touch payload")
 	}
 	var touch Touch
 	copy(touch.UUIDBytes[:], p[4:20])
 	touch.UUID = formatUUID(touch.UUIDBytes)
+	touch.FrameID = le.Uint32(p[36:40])
 	touch.RawX = le.Uint32(p[48:52])
 	touch.RawY = le.Uint32(p[52:56])
 	return touch, nil

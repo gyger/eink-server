@@ -153,7 +153,7 @@ On Joan 6 firmware 7.4.4407, a completed contact produces one uncompressed
 | 24 | Sentinel `0xffffffff` |
 | 28 | Event-body size `20` |
 | 32 | Reserved/unknown `0` |
-| 36 | Event word 0, observed `0` |
+| 36 | Frame ID of the image being touched (`0` if no assigned frame is displayed) |
 | 40 | Event word 1, observed `0` |
 | 44 | Event word 2, observed `0` |
 | 48 | Native-panel X coordinate |
@@ -163,6 +163,12 @@ The coordinates use the panel's native 180-degree-rotated space. For this
 1024x758 Joan 6, intended physical coordinates are therefore
 `x = 1023 - rawX`, `y = 757 - rawY`.
 
+The frame ID at offset 36 was identified during a later live-server test. After
+the server displayed frame `3946585767` (`0xeb3c1ea7`), every touch carried that
+same value at offset 36. Earlier captures contained zero because display state
+was zero. The server can use this field to associate input with the exact frame
+the user saw and identify stale touches after a screen change.
+
 Three isolated taps, a three-second hold, and a slow horizontal drag each
 produced exactly one record. The hold carried no observed duration or phase
 change. The drag reported its initial contact position and produced no movement
@@ -170,9 +176,11 @@ records. This firmware therefore exposes a completed contact/click abstraction,
 not separate down, move, and up events in the tested configuration. The server
 sent no response to these records and the tablet continued normally.
 
-The gateway strictly decodes this record, validates the UUID and coordinate
+The gateway strictly decodes this record, exposes the variable frame ID,
+validates the UUID and coordinate
 bounds against the connected device's latest status, converts it to physical
-coordinates, and writes one `touch event` entry to the service log. Touches are
+coordinates, and writes one `touch event` entry containing the frame ID to the
+service log. Touches are
 not persisted, published through SSE, acknowledged, or passed to a renderer yet.
 
 ## Unsupported protocol areas
