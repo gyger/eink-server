@@ -1,0 +1,37 @@
+# Compiled server and build output
+/joan-server
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# Runtime state
+/data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+
+# Test and profiling output
+/coverage/
+coverage.out
+*.coverprofile
+*.prof
+*.pprof
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Temporary and editor files
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+.idea/
+.vscode/
