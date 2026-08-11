@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"joantablet/server/internal/config"
 	"joantablet/server/internal/events"
 	"joantablet/server/internal/gateway"
 	"joantablet/server/internal/httpapi"
@@ -19,11 +20,43 @@ import (
 )
 
 func main() {
-	deviceAddr := flag.String("device-listen", ":11113", "tablet TCP listen address")
-	httpAddr := flag.String("http-listen", ":8080", "management HTTP listen address")
-	database := flag.String("database", "./data/joan.db", "SQLite database path")
-	logFormat := flag.String("log-format", "text", "text or json")
+	defaults := config.Defaults()
+	configPath := flag.String("config", "", "config file path (default: eink-server.toml beside executable)")
+	deviceAddr := flag.String("device-listen", defaults.DeviceListen, "override tablet TCP listen address")
+	httpAddr := flag.String("http-listen", defaults.HTTPListen, "override management HTTP listen address")
+	database := flag.String("database", defaults.Database, "override SQLite database path")
+	logFormat := flag.String("log-format", defaults.LogFormat, "override log format: text or json")
 	flag.Parse()
+
+	explicitConfig := *configPath != ""
+	if !explicitConfig {
+		var err error
+		*configPath, err = config.DefaultPath()
+		if err != nil {
+			fatal(slog.Default(), "resolving default config path", err)
+		}
+	}
+	cfg, err := config.Load(*configPath, explicitConfig)
+	if err != nil {
+		fatal(slog.Default(), "loading config", err)
+	}
+	flag.Visit(func(value *flag.Flag) {
+		switch value.Name {
+		case "device-listen":
+			cfg.DeviceListen = *deviceAddr
+		case "http-listen":
+			cfg.HTTPListen = *httpAddr
+		case "database":
+			cfg.Database = *database
+		case "log-format":
+			cfg.LogFormat = *logFormat
+		}
+	})
+	if err := cfg.Validate(); err != nil {
+		fatal(slog.Default(), "validating config", err)
+	}
+	*deviceAddr, *httpAddr, *database, *logFormat = cfg.DeviceListen, cfg.HTTPListen, cfg.Database, cfg.LogFormat
+
 	var handler slog.Handler
 	if *logFormat == "json" {
 		handler = slog.NewJSONHandler(os.Stdout, nil)

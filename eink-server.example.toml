@@ -1,0 +1,4 @@
+device_listen = ":11113"
+http_listen = ":8080"
+database = "./data/eink.db"
+log_format = "text"

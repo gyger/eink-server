@@ -1,4 +1,4 @@
-# Joan Tablet Server documentation
+# EInk Tablet Server documentation
 
 This directory documents the replacement server implemented under `server/`.
 It is intentionally narrower than Visionect Software Suite: it provides direct
@@ -13,6 +13,8 @@ browser renderer, Redis, Postgres, or a multi-user administration system.
   encoding, acknowledgements, and current protocol limits.
 - [HTTP API](api.md) — native REST API, processing options, SSE, and legacy
   compatibility routes.
+- [Configuration](configuration.md) — TOML format, defaults, discovery, and
+  command-line overrides.
 - [Development and testing](development.md) — Fedora Toolbox workflow, test
   commands, fixtures, and project structure.
 - [Tablet setup and validation](tablet-validation.md) — connecting a Joan,
@@ -37,7 +39,7 @@ Implemented:
 
 Not implemented:
 
-- Touch packet decoding or touch-driven screens.
+- Touch-driven screens (touch packets are decoded and logged).
 - Partial display updates or waveform selection.
 - HTML/URL rendering and VSS sessions/apps.
 - Device configuration, reboot, sleep, firmware, or bootloader updates.

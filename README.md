@@ -1,4 +1,4 @@
-# Joan Tablet Server
+# EInk Tablet Server
 
 A small self-hosted Go gateway for Joan/Visionect protocol-v3 tablets. It accepts
 PNG/JPEG images, converts them to the tablet's packed 4-bit grayscale format,
@@ -22,11 +22,16 @@ go test ./...
 go run ./cmd/joan-server
 ```
 
-The default listeners are:
+With no configuration file or flags, the defaults are:
 
-- `:11113` — Joan tablet TCP protocol
+- `:11113` — EInk tablet TCP protocol
 - `:8080` — web UI and REST API
-- `./data/joan.db` — SQLite state
+- `./data/eink.db` — SQLite state
+
+At startup, the server looks for `eink-server.toml` beside its executable. A
+missing or empty file uses all defaults. Use `--config /path/to/config.toml` to
+select another file; command-line settings override values from the file. See
+[configuration](doc/configuration.md) for the format and complete behavior.
 
 Point the tablet at the server's LAN address and port 11113. Open
 `http://SERVER:8080/` after the tablet has connected.
@@ -74,5 +79,5 @@ from USB (USB changes its normal display-transfer behavior):
    assignment from `sent` to `delivered`.
 4. Restart the server and confirm an offline queued image survives.
 
-Touch messages, partial updates, URL rendering, encryption, bootloader/firmware
-updates, and verified Joan 13 support are future work.
+Touch-driven actions, partial updates, URL rendering, encryption,
+bootloader/firmware updates, and verified larger-device support are future work.

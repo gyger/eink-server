@@ -64,7 +64,7 @@ remain historical metadata but are never replayed ahead of a newer frame.
 
 ## Persistence
 
-The default database is `./data/joan.db`. It contains:
+The default database is `./data/eink.db`. It contains:
 
 - Device identity, name, first/last seen, dimensions, firmware, telemetry,
   display-state ID, raw status fields, and image defaults.

@@ -23,6 +23,7 @@ coverage.out
 *.pprof
 
 # Local configuration and secrets
+/eink-server.toml
 .env
 .env.*
 !.env.example

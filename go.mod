@@ -3,6 +3,7 @@ module joantablet/server
 go 1.26
 
 require (
+	github.com/BurntSushi/toml v1.5.0
 	github.com/pierrec/lz4/v4 v4.1.27
 	modernc.org/sqlite v1.40.1
 )
