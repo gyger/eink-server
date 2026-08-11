@@ -1,8 +1,9 @@
 # EInk Tablet Server
 
-A small self-hosted Go gateway for Joan/Visionect protocol-v3 tablets. It accepts
-PNG/JPEG images, converts them to the tablet's packed 4-bit grayscale format,
-and delivers the newest desired frame when the tablet checks in.
+A small self-hosted Go gateway for Joan/Visionect protocol-v3 tablets. It
+accepts PNG/JPEG images and interactive SVG designs, converts them to the
+tablet's packed 4-bit grayscale format, and delivers the newest desired frame
+when the tablet checks in.
 
 > [!IMPORTANT]
 > This project has been heavily vibe coded with guidance from a human.
@@ -41,6 +42,10 @@ select another file; command-line settings override values from the file. See
 
 Point the tablet at the server's LAN address and port 11113. Open
 `http://SERVER:8080/` after the tablet has connected.
+Newly enrolled tablets are automatically sent the `builtin:status` clock and
+calendar dashboard. Set the tablet's name and location in the web UI; both are
+available to SVG designs. Set `default_design = ""` in TOML to leave a new
+tablet's current screen unchanged instead.
 
 This release has no authentication or TLS. Do not expose either listener to the
 public internet.
@@ -63,6 +68,11 @@ curl -X POST -H 'Content-Type: image/jpeg' \
 
 # Follow lifecycle and delivery events
 curl -N http://localhost:8080/api/v1/events/stream
+
+# Activate an SVG design with dynamic text and touch actions
+curl -X PUT -H 'Content-Type: image/svg+xml' \
+  --data-binary @dashboard.svg \
+  http://localhost:8080/api/v1/devices/DEVICE_UUID/image
 ```
 
 Image options are `fit=contain|cover|stretch|exact`,
@@ -85,5 +95,6 @@ from USB (USB changes its normal display-transfer behavior):
    assignment from `sent` to `delivered`.
 4. Restart the server and confirm an offline queued image survives.
 
-Touch-driven actions, partial updates, URL rendering, encryption,
-bootloader/firmware updates, and verified larger-device support are future work.
+WASM widgets, multi-page navigation, partial updates, URL rendering,
+encryption, bootloader/firmware updates, and verified larger-device support are
+future work.

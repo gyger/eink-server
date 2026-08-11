@@ -30,15 +30,11 @@ Completed:
   visible dashboard regions logged the expected frame ID and coordinates with
   no decoder warnings.
 
-Still to implement:
-
-1. Decide whether to reject, ignore, or mark a touch whose frame ID does not
-   match the current interactive frame, and test that stale-input path.
-2. Publish the observed touch abstraction as `touch.tap` when the project is
-   ready to consume touch outside the logfile. Quick taps, a
-   three-second hold, and a slow drag each produced one record; the drag reported
-   its initial contact and no down/move/up stream was observed. Do not synthesize
-   phases that the device did not send.
+Touches are now published as `touch.tap` and correlated with the stored
+interaction map for the frame ID reported by the tablet. SVG designs can route
+the topmost matching region to a registered webhook action. Quick taps, a
+three-second hold, and a slow drag still each represent one completed-contact
+record; the server does not invent down/move/up phases.
 
 The byte layouts and capture observations are documented in
 `server/doc/protocol.md` and `Discovery/codex/README.md`.
@@ -90,6 +86,17 @@ Remaining:
   result.
 - Repeat with a grayscale photograph using Floyd–Steinberg dithering and inspect
   the physical result.
+- Build an E Ink typography test sheet covering Noto Sans/Serif sizes, weights,
+  grayscale levels, horizontal/vertical strokes, and reversed white-on-black
+  text; photograph the physical panel rather than judging only the PNG preview.
+- Add an optional E Ink text treatment after measuring that sheet. Candidates
+  include pixel-aligned placement, a minimum recommended font size/weight,
+  contrast curves before 4-bit quantization, darker edge coverage, and a small
+  morphology/stroke expansion. Keep this separate from photographic dithering
+  and make it selectable so uploaded artwork is not unexpectedly altered.
+- Add a device-faithful preview mode that shows the final 16 grayscale levels
+  and flags text below the tested readable size. Compare it against physical
+  results before choosing defaults.
 - Promote the successful capture into the documented golden-fixture set and add
   its observations to `Discovery/codex/README.md`.
 
@@ -170,8 +177,9 @@ Once hardware delivery works reliably:
   `/api/v1/health` and startup logs.
 - Add a systemd user or system service example with a persistent data directory,
   restart policy, and restricted permissions.
-- Add graceful database backup instructions and a documented schema migration
-  policy before the first upgrade changes the schema.
+- Add graceful database backup instructions. The schema-version mechanism is
+  in place; test backup, upgrade, and failure recovery before shipping the
+  first migration beyond version 1.
 - Add optional Prometheus-style counters only if operational experience shows
   logs and the event API are insufficient.
 - Add configurable event/status retention and upload limits if real usage needs
@@ -195,7 +203,7 @@ The current embedded UI is intentionally small. Useful incremental additions are
 Avoid adding VSS-style sessions, application catalogs, or HTML rendering unless
 a concrete use case justifies their complexity.
 
-## 6. Capture and decode touch events
+## 6. Continue touch protocol validation
 
 The first protocol-research milestone was completed on 2026-08-11. Three known
 taps, a hold, and a drag established the type-6 record boundary, UUID,
@@ -203,16 +211,14 @@ native-panel coordinates, and 180-degree coordinate transform. This firmware
 emitted one completed-contact record per gesture and no separate movement or
 phase records. No acknowledgement was required against the test server.
 
-Remaining work before UI code:
+The server now strictly decodes touch records, publishes `touch.tap`, preserves
+frame correlation, and dispatches SVG action regions. Remaining protocol work:
 
 1. Repeat through official VSS to determine whether it returns an optional
    response or enables richer touch reporting.
 2. Test repeated contacts and edge/extreme coordinates on a coordinate grid.
-3. Add the raw fixtures and a strict decoder in `internal/pv3`.
-4. Normalize the observed abstraction as `touch.tap`; do not invent down/move/up
-   phases unless another capture actually produces them.
-5. Persist events in the bounded event log and publish them through the existing
-   SSE endpoint.
+3. Do not invent down/move/up phases unless another capture actually produces
+   them.
 
 Exit criteria:
 
@@ -221,26 +227,30 @@ Exit criteria:
 - Unknown variants are preserved or rejected safely rather than misdecoded.
 - Receiving touch events does not disturb heartbeat or image delivery.
 
-## 7. Add touch-driven Go rendering
+## 7. Extend SVG rendering with providers
 
-After touch decoding is stable, use the existing renderer boundary to build one
-small interactive proof of concept:
+The SVG engine now renders dynamic device values, stores interaction maps per
+frame, and invokes registered webhook actions. The built-in touch demo provides
+the first interactive proof of concept. Remaining extensions are:
 
-- Define a renderer with explicit per-device state.
-- Render a screen containing two or three large buttons.
-- Feed normalized touch events to the renderer.
-- Produce and queue the next frame using the normal assignment/delivery path.
-- Debounce duplicate input and account for E Ink refresh latency.
-
-A first useful screen might be a simple menu, room-status panel, or page switcher.
-Do not start with a general template language. Let one or two real screens reveal
-which layout, font, state, and interaction primitives are actually needed.
+- Define a provider contract for rectangular `data-region` slots.
+- Add a general design-driven refresh scheduler before defining a WASM ABI. A
+  design should be able to declare its desired interval on the root SVG (for
+  example, `data-refresh="1m"`); designs without it remain event-driven.
+- Treat the requested interval as a hint: enforce a configurable safe minimum,
+  align periodic designs to interval boundaries where practical, add jitter to
+  avoid refreshing every tablet simultaneously, and avoid queuing a frame when
+  the rendered output has not changed. The built-in clock should request a
+  one-minute interval through this mechanism rather than receive special-case
+  scheduler logic.
+- Add `data-page` navigation while preserving frame-correlated action maps.
+- Debounce provider refreshes and account for E Ink refresh latency.
 
 Exit criteria:
 
-- A physical tap causes a deterministic state change and updated frame.
-- Renderer state survives reconnects and, if needed, server restarts.
-- Application rendering remains separate from PV3 transport code.
+- A provider updates only its declared region and schedules frames safely.
+- Provider/page state survives reconnects and server restarts.
+- A bounded WASM ABI is based on a proven Go provider rather than speculation.
 
 ## 8. Broaden hardware support carefully
 

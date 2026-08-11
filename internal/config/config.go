@@ -5,8 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -14,18 +18,37 @@ import (
 const DefaultFilename = "eink-server.toml"
 
 type Config struct {
-	DeviceListen string `toml:"device_listen"`
-	HTTPListen   string `toml:"http_listen"`
-	Database     string `toml:"database"`
-	LogFormat    string `toml:"log_format"`
+	DeviceListen    string                  `toml:"device_listen"`
+	HTTPListen      string                  `toml:"http_listen"`
+	Database        string                  `toml:"database"`
+	LogFormat       string                  `toml:"log_format"`
+	SystemName      string                  `toml:"system_name"`
+	DesignDirectory string                  `toml:"design_directory"`
+	DefaultDesign   string                  `toml:"default_design"`
+	FontDirectory   string                  `toml:"font_directory"`
+	UseSystemFonts  bool                    `toml:"use_system_fonts"`
+	Actions         map[string]ActionConfig `toml:"actions"`
+}
+
+type ActionConfig struct {
+	Type    string            `toml:"type"`
+	URL     string            `toml:"url"`
+	Timeout string            `toml:"timeout"`
+	Headers map[string]string `toml:"headers"`
 }
 
 func Defaults() Config {
 	return Config{
-		DeviceListen: ":11113",
-		HTTPListen:   ":8080",
-		Database:     "./data/eink.db",
-		LogFormat:    "text",
+		DeviceListen:    ":11113",
+		HTTPListen:      ":8080",
+		Database:        "./data/eink.db",
+		LogFormat:       "text",
+		SystemName:      "EInk Server",
+		DesignDirectory: "./designs",
+		DefaultDesign:   "builtin:status",
+		FontDirectory:   "./fonts",
+		UseSystemFonts:  true,
+		Actions:         map[string]ActionConfig{},
 	}
 }
 
@@ -83,7 +106,45 @@ func (c Config) Validate() error {
 	if c.LogFormat != "text" && c.LogFormat != "json" {
 		return errors.New("log_format must be text or json")
 	}
+	if strings.TrimSpace(c.SystemName) == "" {
+		return errors.New("system_name must not be empty")
+	}
+	if c.DefaultDesign != "" && !regexp.MustCompile(`^(builtin|file|db):[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`).MatchString(c.DefaultDesign) {
+		return errors.New("default_design must be empty or a builtin:, file:, or db: design ID")
+	}
+	namePattern := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+	for name, action := range c.Actions {
+		if !namePattern.MatchString(name) {
+			return fmt.Errorf("invalid action name %q", name)
+		}
+		if action.Type != "" && action.Type != "webhook" {
+			return fmt.Errorf("action %q type must be webhook", name)
+		}
+		u, err := url.Parse(action.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("action %q requires an HTTP or HTTPS URL", name)
+		}
+		if action.Timeout != "" {
+			d, err := time.ParseDuration(action.Timeout)
+			if err != nil || d <= 0 || d > 30*time.Second {
+				return fmt.Errorf("action %q timeout must be between 1ns and 30s", name)
+			}
+		}
+		for header, value := range action.Headers {
+			if strings.ContainsAny(header+value, "\r\n") {
+				return fmt.Errorf("action %q contains an invalid header", name)
+			}
+		}
+	}
 	return nil
+}
+
+func (a ActionConfig) TimeoutDuration() time.Duration {
+	if a.Timeout == "" {
+		return 5 * time.Second
+	}
+	d, _ := time.ParseDuration(a.Timeout)
+	return d
 }
 
 func validateListen(name, address string) error {

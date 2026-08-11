@@ -15,10 +15,17 @@ func TestPersistenceAndAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var schemaVersion int
+	if err := s.DB.QueryRow(`SELECT version FROM schema_version`).Scan(&schemaVersion); err != nil || schemaVersion != SchemaVersion {
+		t.Fatalf("schema version=%d err=%v", schemaVersion, err)
+	}
 	st := pv3.Status{UUID: "00112233-4455-6677-8899-aabbccddeeff", Battery: 88, Temperature: 21, Humidity: 43, Width: 1024, Height: 758, Firmware: "7.4.4407", Fields: map[uint32]uint32{10: 88, 15: 43}}
 	isNew, err := s.UpsertStatus(ctx, st)
 	if err != nil || !isNew {
 		t.Fatalf("new=%v err=%v", isNew, err)
+	}
+	if err := s.UpdateDevice(ctx, st.UUID, "Conference display", "Meeting room", imageproc.Defaults()); err != nil {
+		t.Fatal(err)
 	}
 	as, err := s.CreateAssignments(ctx, []string{st.UUID}, "image/png", tinyPNG(t), imageproc.Override{})
 	if err != nil || len(as) != 1 {
@@ -49,8 +56,25 @@ func TestPersistenceAndAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Battery != 88 || d.Humidity != 43 || d.Desired == nil || d.Desired.FrameID != as[0].FrameID || d.Desired.AcknowledgedAt == nil {
+	if d.Name != "Conference display" || d.Location != "Meeting room" || d.Battery != 88 || d.Humidity != 43 || d.Desired == nil || d.Desired.FrameID != as[0].FrameID || d.Desired.AcknowledgedAt == nil {
 		t.Fatalf("device=%+v", d)
+	}
+}
+
+func TestRejectsNewerSchema(t *testing.T) {
+	path := t.TempDir() + "/future.db"
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.Exec(`UPDATE schema_version SET version=?`, SchemaVersion+1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(path); err == nil {
+		t.Fatal("expected newer schema to be rejected")
 	}
 }
 

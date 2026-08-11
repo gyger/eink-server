@@ -20,12 +20,13 @@ Returns one device or `404 device_not_found`.
 
 ### `PATCH /api/v1/devices/{uuid}`
 
-Updates the friendly name, image defaults, or both. When changing defaults,
-send the complete settings object:
+Updates the friendly name, location, and image defaults. When changing
+defaults, send the complete settings object:
 
 ```json
 {
   "name": "Kitchen",
+  "location": "Ground floor",
   "image_defaults": {
     "fit": "contain",
     "background": "white",
@@ -40,8 +41,10 @@ send the complete settings object:
 
 ### `PUT /api/v1/devices/{uuid}/image`
 
-The request body is raw PNG or JPEG bytes with `Content-Type: image/png` or
-`image/jpeg`. A successful request returns `202` with one assignment.
+The request body is raw PNG, JPEG, or SVG bytes with `Content-Type: image/png`,
+`image/jpeg`, or `image/svg+xml`. SVG activates a persistent dynamic design.
+Uploading PNG/JPEG later deactivates that design. SVG does not accept image
+processing query overrides. A successful request returns `202`.
 
 ### `POST /api/v1/images:broadcast`
 
@@ -90,7 +93,26 @@ Opens a Server-Sent Events stream. Event names currently include:
 - `image.queued`, `image.sent`, `image.acknowledged`, `image.delivered`,
   `image.failed`
 
-Future decoded touch events will use this same event mechanism.
+SVG touch and action events include `touch.tap`, `action.unresolved`,
+`action.started`, `action.succeeded`, and `action.failed`.
+
+## SVG designs and actions
+
+- `GET /api/v1/designs` lists built-in, filesystem, and database designs.
+- `GET /api/v1/designs/{id}` returns compiled metadata.
+- `PUT /api/v1/designs/{name}` stores a reusable database SVG.
+- `DELETE /api/v1/designs/{name}` deletes a database SVG.
+- `POST /api/v1/designs:reload` rescans the configured design directory.
+- `PUT /api/v1/devices/{uuid}/design` assigns `{"design_id":"builtin:status"}`.
+- `DELETE /api/v1/devices/{uuid}/design` stops dynamic refresh without blanking
+  the displayed frame.
+- `GET /api/v1/actions` lists actions with header values redacted.
+- `PUT /api/v1/actions/{name}` creates or replaces a dynamic webhook action.
+- `DELETE /api/v1/actions/{name}` deletes a dynamic action; TOML-managed actions
+  are read-only.
+
+See [SVG designs](svg-designs.md) for the SVG attribute contract and webhook
+payload.
 
 ## VSS compatibility routes
 

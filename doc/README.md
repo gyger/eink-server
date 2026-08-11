@@ -17,6 +17,8 @@ browser renderer, Redis, Postgres, or a multi-user administration system.
   compatibility routes.
 - [Configuration](configuration.md) — TOML format, defaults, discovery, and
   command-line overrides.
+- [SVG designs](svg-designs.md) — dynamic values, touch regions, design
+  sources, actions, embedded data, and current limits.
 - [Development and testing](development.md) — Fedora Toolbox workflow, test
   commands, fixtures, and project structure.
 - [Tablet setup and validation](tablet-validation.md) — connecting a Joan,
@@ -34,14 +36,16 @@ Implemented:
 
 - PV3 status and heartbeat exchange.
 - Auto-enrollment and current telemetry.
-- PNG/JPEG upload, processing, persistence, and delivery.
+- PNG/JPEG upload plus persistent interactive SVG designs with dynamic values,
+  processing, persistence, and delivery.
+- Frame-correlated touch events and registered webhook actions.
 - Per-device and broadcast assignments.
 - Native REST API, event history, SSE, and embedded UI.
 - A small compatibility layer for image-oriented VSS clients.
 
 Not implemented:
 
-- Touch-driven screens (touch packets are decoded and logged).
+- WASM/data-region providers and multi-page SVG navigation.
 - Partial display updates or waveform selection.
 - HTML/URL rendering and VSS sessions/apps.
 - Device configuration, reboot, sleep, firmware, or bootloader updates.

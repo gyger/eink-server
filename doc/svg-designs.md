@@ -1,0 +1,105 @@
+# SVG designs
+
+SVG designs provide self-contained, interactive tablet screens. They can be
+uploaded directly to a device, stored for reuse in SQLite, loaded from the
+configured design directory, or selected from the built-in designs.
+
+## Dynamic values
+
+A `data-value` attribute on a `text` element replaces its text content during
+rendering while leaving useful placeholder text for an SVG editor:
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 758">
+  <text x="40" y="80" data-value="${system.name}">EInk Server</text>
+  <text x="40" y="160" data-value="${device.temperature} °C">-- °C</text>
+  <text x="40" y="240" data-value="${device.humidity}% RH">--% RH</text>
+</svg>
+```
+
+Supported variables are `system.name`, `device.name`, `device.uuid`,
+`system.time`, `device.location`, `device.battery`, `device.temperature`,
+`device.humidity`, `device.width`, `device.height`, `device.firmware`, and
+`device.display_state`. `system.time` is the server-local time in `HH:MM`
+format. Unknown values reject the design. A new frame is queued only when a
+value actually referenced by the active design changes.
+
+## Fonts
+
+Noto Sans and Noto Serif variable fonts are embedded in the server binary under
+the SIL Open Font License. Generic `sans-serif` and `serif` SVG families map to
+them, and an SVG without a family defaults to Noto Sans.
+
+Additional font files can be placed in `font_directory`. When
+`use_system_fonts` is enabled, the operating-system font cache is searched after
+the embedded and application directories. Font directories are scanned at
+startup; restart the server after adding or removing font files.
+
+## Actions and regions
+
+Use `data-action` on a rectangle, image, circle, or ellipse. Other SVG elements
+must provide an explicit `data-hitbox="x y width height"`:
+
+```svg
+<rect id="lights" x="40" y="300" width="300" height="120"
+      data-action="lights_on" data-region="primary-button"/>
+<path d="…" data-action="details" data-hitbox="400 300 300 120"/>
+```
+
+`translate`, `scale`, and matrix transforms are applied to hit areas. When hit
+areas overlap, the later element in document order wins. `data-region` records
+a rectangular slot for future Go or WASM providers; providers are not executed
+yet.
+
+Touch dispatch is tied to the frame ID reported by the tablet, so touches made
+during a screen transition use the interaction map for the screen the user
+actually saw. An unregistered action does nothing but is logged and published
+as `action.unresolved` with the action name.
+
+Webhook actions receive a JSON POST:
+
+```json
+{
+  "action": "lights_on",
+  "device_uuid": "…",
+  "design_id": "db:room",
+  "page_id": "main",
+  "frame_id": 123,
+  "element_id": "lights",
+  "region": "primary-button",
+  "x": 100,
+  "y": 350,
+  "timestamp": "2026-08-11T12:00:00Z"
+}
+```
+
+## Sources and pages
+
+Design IDs use `builtin:`, `file:`, and `db:` prefixes. The server includes
+`builtin:status` and `builtin:touch-demo`. New tablets receive
+`builtin:status` by default; `default_design` can select another design or be
+set to an empty string to disable automatic assignment.
+The status design is a clock and calendar dashboard inspired by the checked-in
+sample dashboard. Its clock and update label use `system.time`; the February
+2026 calendar is static for now.
+Filesystem loading is top-level and occurs at startup or through the reload
+API.
+
+Top-level groups may use `data-page="name"`. Shared root content and the first
+page are rendered in this release; later pages are retained as valid SVG but
+not displayed. Page navigation is reserved for a future action type.
+
+Periodic refresh is not implemented yet. The planned contract lets the root
+SVG request an interval such as `data-refresh="1m"`; designs without a refresh
+declaration continue to render only when referenced values or settings change.
+The server will enforce a safe minimum and suppress unchanged frames, so the
+declared interval will be a scheduling hint rather than a guarantee.
+
+## Security and limits
+
+SVG source is limited to 2 MiB. Scripts, event attributes, `foreignObject`,
+animation, external files, and network resources are rejected. Binary assets
+may be embedded as `data:` URIs for PNG/JPEG images; the encoded bytes count
+toward the same source limit. Fonts should use the embedded families or the
+configured font directory. PDF, HTML, PostScript, and other document formats
+are not supported.

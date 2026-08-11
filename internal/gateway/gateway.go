@@ -18,10 +18,15 @@ import (
 )
 
 type Gateway struct {
-	Store       *store.Store
-	Hub         *events.Hub
-	Log         *slog.Logger
-	Renderer    render.Renderer
+	Store    *store.Store
+	Hub      *events.Hub
+	Log      *slog.Logger
+	Renderer render.Renderer
+	Designs  interface {
+		DeviceEnrolled(context.Context, string)
+		StatusChanged(context.Context, string)
+		Touch(context.Context, string, uint32, uint32, uint32, uint32, uint32)
+	}
 	mu          sync.RWMutex
 	connections map[string]*session
 	listener    net.Listener
@@ -161,6 +166,9 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 				continue
 			}
 			g.Log.Info("touch event", "uuid", uuid, "frame_id", touch.FrameID, "x", x, "y", y, "raw_x", touch.RawX, "raw_y", touch.RawY)
+			if g.Designs != nil {
+				g.Designs.Touch(ctx, uuid, touch.FrameID, x, y, touch.RawX, touch.RawY)
+			}
 			continue
 		}
 		if messageType != pv3.MessageStatus {
@@ -190,6 +198,9 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 		}
 		if isNew {
 			g.emit(ctx, uuid, "device.enrolled", map[string]any{"width": st.Width, "height": st.Height})
+			if g.Designs != nil {
+				g.Designs.DeviceEnrolled(ctx, uuid)
+			}
 		}
 		if assignmentID, delivered, err := g.Store.MarkDelivered(ctx, uuid, st.DisplayState); err != nil {
 			g.Log.Warn("marking frame delivered", "uuid", uuid, "error", err)
@@ -208,6 +219,9 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 		}
 		active.readyOnce.Do(func() { close(active.ready) })
 		g.emit(ctx, uuid, "device.status", map[string]any{"battery": st.Battery, "temperature": st.Temperature, "humidity": st.Humidity, "display_state": st.DisplayState})
+		if g.Designs != nil {
+			g.Designs.StatusChanged(ctx, uuid)
+		}
 		g.deliver(ctx, active)
 	}
 }

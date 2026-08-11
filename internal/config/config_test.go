@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -11,7 +12,7 @@ func TestMissingAutomaticConfigUsesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != Defaults() {
+	if !reflect.DeepEqual(got, Defaults()) {
 		t.Fatalf("Load() = %+v, want %+v", got, Defaults())
 	}
 }
@@ -22,7 +23,7 @@ func TestEmptyConfigUsesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != Defaults() {
+	if !reflect.DeepEqual(got, Defaults()) {
 		t.Fatalf("Load() = %+v, want %+v", got, Defaults())
 	}
 }
@@ -38,6 +39,23 @@ func TestConfigOverlaysDefaults(t *testing.T) {
 	}
 }
 
+func TestWebhookActionConfig(t *testing.T) {
+	path := writeConfig(t, `[actions.lights]
+type = "webhook"
+url = "http://automation.local/lights"
+timeout = "3s"
+[actions.lights.headers]
+Authorization = "Bearer secret"
+`)
+	got, err := Load(path, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Actions["lights"].URL != "http://automation.local/lights" || got.Actions["lights"].TimeoutDuration().Seconds() != 3 {
+		t.Fatalf("actions=%+v", got.Actions)
+	}
+}
+
 func TestExplicitMissingConfigFails(t *testing.T) {
 	if _, err := Load(filepath.Join(t.TempDir(), "missing.toml"), true); err == nil {
 		t.Fatal("explicit missing config accepted")
@@ -49,6 +67,7 @@ func TestUnknownAndInvalidValuesFail(t *testing.T) {
 		"unknown = true",
 		"http_listen = \"8080\"",
 		"log_format = \"pretty\"",
+		"default_design = \"unknown\"",
 		"http_listen =",
 	} {
 		if _, err := Load(writeConfig(t, contents), true); err == nil {

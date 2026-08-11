@@ -62,4 +62,5 @@ For touch support, the intended sequence is:
 2. Identify the complete record envelope and coordinate/event fields.
 3. Add golden fixtures and a decoder in `internal/pv3`.
 4. Persist and publish normalized events through the existing event hub.
-5. Let a renderer consume those events and produce the next frame.
+5. Resolve events against the interaction map stored for their frame ID and
+   dispatch the matching SVG action.

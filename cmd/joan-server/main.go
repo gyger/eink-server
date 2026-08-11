@@ -12,7 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"joantablet/server/internal/action"
 	"joantablet/server/internal/config"
+	"joantablet/server/internal/design"
 	"joantablet/server/internal/events"
 	"joantablet/server/internal/gateway"
 	"joantablet/server/internal/httpapi"
@@ -77,7 +79,25 @@ func main() {
 	defer cancel()
 	hub := events.New()
 	gw := gateway.New(db, hub, log)
-	api := &httpapi.API{Store: db, Hub: hub, Connections: gw, Log: log}
+	fontCleanup, err := design.ConfigureFonts(cfg.FontDirectory, cfg.UseSystemFonts)
+	if err != nil {
+		fatal(log, "loading fonts", err)
+	}
+	defer fontCleanup()
+	var configuredActions []store.Action
+	for name, definition := range cfg.Actions {
+		configuredActions = append(configuredActions, store.Action{Name: name, Source: "config", Kind: "webhook", URL: definition.URL, Headers: definition.Headers, TimeoutMS: int(definition.TimeoutDuration() / time.Millisecond)})
+	}
+	if err := db.ReconcileConfigActions(ctx, configuredActions); err != nil {
+		fatal(log, "loading configured actions", err)
+	}
+	runner := action.New(ctx, db, hub, log)
+	designs := &design.Service{Store: db, Hub: hub, Log: log, Actions: runner, Notifier: gw, SystemName: cfg.SystemName, DesignDirectory: cfg.DesignDirectory, DefaultDesign: cfg.DefaultDesign}
+	if err := designs.Init(ctx); err != nil {
+		fatal(log, "loading designs", err)
+	}
+	gw.Designs = designs
+	api := &httpapi.API{Store: db, Hub: hub, Connections: gw, Designs: designs, Log: log}
 	httpServer := &http.Server{Addr: *httpAddr, Handler: api.Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
 	errs := make(chan error, 2)
 	go func() { errs <- gw.Serve(ctx, *deviceAddr) }()

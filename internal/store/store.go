@@ -18,9 +18,15 @@ import (
 
 type Store struct{ DB *sql.DB }
 
+// SchemaVersion is the newest database schema understood by this binary.
+// Keep it at 1 until the first release; subsequent schema changes must add a
+// migration instead of changing an already released migration.
+const SchemaVersion = 1
+
 type Device struct {
 	UUID         string             `json:"uuid"`
 	Name         string             `json:"name"`
+	Location     string             `json:"location"`
 	FirstSeen    time.Time          `json:"first_seen"`
 	LastSeen     time.Time          `json:"last_seen"`
 	Battery      uint32             `json:"battery"`
@@ -78,11 +84,49 @@ func Open(path string) (*Store, error) {
 func (s *Store) Close() error { return s.DB.Close() }
 
 func (s *Store) migrate(ctx context.Context) error {
-	const schema = `
-CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
-INSERT INTO schema_version(version) SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM schema_version);
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
+		return err
+	}
+	var count, version int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(MAX(version), 0) FROM schema_version`).Scan(&count, &version); err != nil {
+		return err
+	}
+	if count > 1 {
+		return errors.New("database contains multiple schema versions")
+	}
+	if version < 0 {
+		return fmt.Errorf("invalid database schema version %d", version)
+	}
+	if version > SchemaVersion {
+		return fmt.Errorf("database schema version %d is newer than supported version %d", version, SchemaVersion)
+	}
+	for next := version + 1; next <= SchemaVersion; next++ {
+		migration, ok := schemaMigrations[next]
+		if !ok {
+			return fmt.Errorf("missing database migration for schema version %d", next)
+		}
+		if _, err := tx.ExecContext(ctx, migration); err != nil {
+			return fmt.Errorf("applying database schema version %d: %w", next, err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM schema_version`); err != nil {
+			return fmt.Errorf("clearing database schema version: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_version(version) VALUES(?)`, next); err != nil {
+			return fmt.Errorf("recording database schema version %d: %w", next, err)
+		}
+	}
+	return tx.Commit()
+}
+
+var schemaMigrations = map[int]string{
+	1: `
 CREATE TABLE IF NOT EXISTS devices (
- uuid TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
+ uuid TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
  battery INTEGER NOT NULL DEFAULT 0, temperature INTEGER NOT NULL DEFAULT 0, humidity INTEGER NOT NULL DEFAULT 0,
  width INTEGER NOT NULL DEFAULT 0,
  height INTEGER NOT NULL DEFAULT 0, firmware TEXT NOT NULL DEFAULT '', display_state INTEGER NOT NULL DEFAULT 0,
@@ -105,9 +149,21 @@ CREATE TABLE IF NOT EXISTS status_samples (
  id INTEGER PRIMARY KEY AUTOINCREMENT, device_uuid TEXT NOT NULL, status_json TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS samples_device_created ON status_samples(device_uuid,created_at);
-`
-	_, err := s.DB.ExecContext(ctx, schema)
-	return err
+CREATE TABLE IF NOT EXISTS designs (
+ id TEXT PRIMARY KEY, name TEXT NOT NULL, source TEXT NOT NULL, svg BLOB NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS device_designs (
+ device_uuid TEXT PRIMARY KEY REFERENCES devices(uuid), design_id TEXT NOT NULL, svg BLOB NOT NULL,
+ dependencies_json TEXT NOT NULL DEFAULT '[]', values_hash TEXT NOT NULL DEFAULT '', page_id TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS assignment_interactions (
+ assignment_id INTEGER PRIMARY KEY REFERENCES assignments(id), design_id TEXT NOT NULL, page_id TEXT NOT NULL DEFAULT '', map_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS actions (
+ name TEXT PRIMARY KEY, source TEXT NOT NULL, kind TEXT NOT NULL, url TEXT NOT NULL, headers_json TEXT NOT NULL DEFAULT '{}',
+ timeout_ms INTEGER NOT NULL DEFAULT 5000, updated_at TEXT NOT NULL
+);
+`,
 }
 
 func nowString() string            { return time.Now().UTC().Format(time.RFC3339Nano) }
@@ -167,7 +223,7 @@ func (s *Store) sampleStatus(ctx context.Context, st pv3.Status, raw, now string
 }
 
 func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT uuid,name,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,settings_json FROM devices ORDER BY name,uuid`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT uuid,name,location,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,settings_json FROM devices ORDER BY name,uuid`)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +254,7 @@ type scanner interface{ Scan(...any) error }
 func scanDevice(row scanner) (Device, error) {
 	var d Device
 	var first, last, settings string
-	err := row.Scan(&d.UUID, &d.Name, &first, &last, &d.Battery, &d.Temperature, &d.Humidity, &d.Width, &d.Height, &d.Firmware, &d.DisplayState, &settings)
+	err := row.Scan(&d.UUID, &d.Name, &d.Location, &first, &last, &d.Battery, &d.Temperature, &d.Humidity, &d.Width, &d.Height, &d.Firmware, &d.DisplayState, &settings)
 	if err != nil {
 		return d, err
 	}
@@ -209,7 +265,7 @@ func scanDevice(row scanner) (Device, error) {
 }
 
 func (s *Store) GetDevice(ctx context.Context, uuid string) (Device, error) {
-	row := s.DB.QueryRowContext(ctx, `SELECT uuid,name,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,settings_json FROM devices WHERE uuid=?`, uuid)
+	row := s.DB.QueryRowContext(ctx, `SELECT uuid,name,location,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,settings_json FROM devices WHERE uuid=?`, uuid)
 	d, err := scanDevice(row)
 	if err == nil {
 		d.Desired, _ = s.latestAssignment(ctx, uuid)
@@ -217,11 +273,11 @@ func (s *Store) GetDevice(ctx context.Context, uuid string) (Device, error) {
 	return d, err
 }
 
-func (s *Store) UpdateDevice(ctx context.Context, uuid, name string, settings imageproc.Settings) error {
+func (s *Store) UpdateDevice(ctx context.Context, uuid, name, location string, settings imageproc.Settings) error {
 	if err := settings.Validate(); err != nil {
 		return err
 	}
-	res, err := s.DB.ExecContext(ctx, `UPDATE devices SET name=?,settings_json=? WHERE uuid=?`, name, settings.JSON(), uuid)
+	res, err := s.DB.ExecContext(ctx, `UPDATE devices SET name=?,location=?,settings_json=? WHERE uuid=?`, name, location, settings.JSON(), uuid)
 	if err == nil {
 		n, _ := res.RowsAffected()
 		if n == 0 {

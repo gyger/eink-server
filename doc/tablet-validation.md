@@ -68,8 +68,11 @@ Common symptoms:
   indicate that the generated opaque frame ID is not accepted by that firmware.
 - **No screen update while USB is connected:** disconnect the USB data cable and
   let the device reconnect over Wi-Fi.
-- **Image rejected by API:** confirm PNG/JPEG content type, input size, decoded
-  pixel count, even target width, and `exact` dimensions.
+- **Image rejected by API:** for PNG/JPEG, confirm content type, input size,
+  decoded pixel count, even target width, and `exact` dimensions. For SVG,
+  confirm `image/svg+xml`, a positive `viewBox`, self-contained resources, and
+  the 2 MiB source limit. SVG uploads do not accept image-processing query
+  overrides.
 
 ## Touch logging check
 
@@ -83,7 +86,8 @@ level=INFO msg="touch event" uuid=... frame_id=3946585767 x=99 y=54 raw_x=924 ra
 `frame_id` identifies the image visible when contact occurred. `x` and `y` use
 the physical top-left-origin screen coordinate system. `raw_x`
 and `raw_y` retain the panel-native 180-degree-rotated values for diagnostics.
-No touch record is saved in SQLite or sent to the HTTP event stream yet.
+Touch records are saved as `touch.tap` events and sent through the HTTP event
+stream. SVG frames may additionally dispatch a named action.
 
 ## Safety and recovery
 

@@ -13,6 +13,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"joantablet/server/internal/action"
+	"joantablet/server/internal/design"
 	"joantablet/server/internal/events"
 	"joantablet/server/internal/pv3"
 	"joantablet/server/internal/store"
@@ -36,7 +38,16 @@ func testAPI(t *testing.T) (*API, *store.Store, *fakeConnections) {
 		t.Fatal(err)
 	}
 	c := &fakeConnections{}
-	return &API{Store: s, Hub: events.New(), Connections: c, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, s, c
+	hub := events.New()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	runner := action.New(ctx, s, hub, log)
+	designs := &design.Service{Store: s, Hub: hub, Log: log, Actions: runner, Notifier: c, SystemName: "Test", DesignDirectory: t.TempDir()}
+	if err := designs.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return &API{Store: s, Hub: hub, Connections: c, Designs: designs, Log: log}, s, c
 }
 
 func TestNativeImageUpload(t *testing.T) {
@@ -66,9 +77,20 @@ func TestNativeImageUpload(t *testing.T) {
 }
 
 func TestDeviceAndLegacyShapes(t *testing.T) {
-	api, _, _ := testAPI(t)
+	api, s, _ := testAPI(t)
+	uuid := "00112233-4455-6677-8899-aabbccddeeff"
+	patch := httptest.NewRequest(http.MethodPatch, "/api/v1/devices/"+uuid, bytes.NewBufferString(`{"location":"Meeting room"}`))
+	patch.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	api.Handler().ServeHTTP(w, patch)
+	if w.Code != http.StatusOK {
+		t.Fatalf("patch status=%d body=%s", w.Code, w.Body.String())
+	}
+	if d, err := s.GetDevice(context.Background(), uuid); err != nil || d.Location != "Meeting room" {
+		t.Fatalf("device=%+v err=%v", d, err)
+	}
 	for _, path := range []string{"/api/v1/devices", "/api/device/"} {
-		w := httptest.NewRecorder()
+		w = httptest.NewRecorder()
 		api.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 		if w.Code != 200 {
 			t.Fatalf("%s status=%d", path, w.Code)
@@ -81,7 +103,7 @@ func TestDeviceAndLegacyShapes(t *testing.T) {
 			t.Fatalf("%s humidity=%v", path, items[0]["humidity"])
 		}
 	}
-	w := httptest.NewRecorder()
+	w = httptest.NewRecorder()
 	api.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/login", nil))
 	if w.Code != http.StatusFound {
 		t.Fatalf("login=%d", w.Code)
@@ -96,5 +118,46 @@ func TestRejectsUnsupportedImage(t *testing.T) {
 	api.Handler().ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d", w.Code)
+	}
+}
+
+func TestSVGDesignAndActionAPIs(t *testing.T) {
+	api, s, _ := testAPI(t)
+	uuid := "00112233-4455-6677-8899-aabbccddeeff"
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 4"><rect width="8" height="4" fill="white" data-action="bell"/></svg>`
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/designs/room", bytes.NewBufferString(svg))
+	request.Header.Set("Content-Type", "image/svg+xml")
+	w := httptest.NewRecorder()
+	api.Handler().ServeHTTP(w, request)
+	if w.Code != 200 {
+		t.Fatalf("put design status=%d body=%s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	api.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/api/v1/devices/"+uuid+"/design", bytes.NewBufferString(`{"design_id":"db:room"}`)))
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("assign status=%d body=%s", w.Code, w.Body.String())
+	}
+	if active, err := s.ActiveDesign(context.Background(), uuid); err != nil || active.DesignID != "db:room" {
+		t.Fatalf("active=%+v err=%v", active, err)
+	}
+	actionBody := `{"type":"webhook","url":"https://example.test/hook","headers":{"Authorization":"secret"},"timeout_ms":1000}`
+	w = httptest.NewRecorder()
+	api.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/api/v1/actions/bell", bytes.NewBufferString(actionBody)))
+	if w.Code != 200 || bytes.Contains(w.Body.Bytes(), []byte("secret")) {
+		t.Fatalf("action status=%d body=%s", w.Code, w.Body.String())
+	}
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.NewGray(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	request = httptest.NewRequest(http.MethodPut, "/api/v1/devices/"+uuid+"/image?fit=exact", &encoded)
+	request.Header.Set("Content-Type", "image/png")
+	w = httptest.NewRecorder()
+	api.Handler().ServeHTTP(w, request)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("image status=%d body=%s", w.Code, w.Body.String())
+	}
+	if _, err := s.ActiveDesign(context.Background(), uuid); !store.IsNotFound(err) {
+		t.Fatalf("active design survived PNG upload: %v", err)
 	}
 }

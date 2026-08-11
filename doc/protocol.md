@@ -178,11 +178,11 @@ not separate down, move, and up events in the tested configuration. The server
 sent no response to these records and the tablet continued normally.
 
 The gateway strictly decodes this record, exposes the variable frame ID,
-validates the UUID and coordinate
-bounds against the connected device's latest status, converts it to physical
-coordinates, and writes one `touch event` entry containing the frame ID to the
-service log. Touches are
-not persisted, published through SSE, acknowledged, or passed to a renderer yet.
+validates the UUID and coordinate bounds against the connected device's latest
+status, converts it to physical coordinates, logs it, and publishes a persisted
+`touch.tap` event. For SVG frames it resolves the interaction map stored with
+that exact frame ID and dispatches the topmost matching named action. Touch
+records are not acknowledged.
 
 ## Unsupported protocol areas
 

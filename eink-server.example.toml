@@ -2,3 +2,15 @@ device_listen = ":11113"
 http_listen = ":8080"
 database = "./data/eink.db"
 log_format = "text"
+system_name = "EInk Server"
+design_directory = "./designs"
+default_design = "builtin:status"
+font_directory = "./fonts"
+use_system_fonts = true
+
+# [actions.example]
+# type = "webhook"
+# url = "http://automation.local/hooks/example"
+# timeout = "5s"
+# [actions.example.headers]
+# Authorization = "Bearer secret"

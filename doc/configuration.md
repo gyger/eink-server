@@ -36,6 +36,11 @@ device_listen = ":11113"
 http_listen = ":8080"
 database = "./data/eink.db"
 log_format = "text"
+system_name = "EInk Server"
+design_directory = "./designs"
+default_design = "builtin:status"
+font_directory = "./fonts"
+use_system_fonts = true
 ```
 
 An example file is included as `eink-server.example.toml`.
@@ -46,6 +51,28 @@ An example file is included as `eink-server.example.toml`.
 | `http_listen` | `:8080` | `--http-listen` | HTTP address for the UI and REST API. |
 | `database` | `./data/eink.db` | `--database` | SQLite database path. Relative paths use the process working directory. |
 | `log_format` | `text` | `--log-format` | `text` for human-readable logs or `json` for structured logs. |
+| `system_name` | `EInk Server` | — | Value available to SVG designs as `${system.name}`. |
+| `design_directory` | `./designs` | — | Optional directory scanned for top-level SVG designs. |
+| `default_design` | `builtin:status` | — | Design assigned when an unknown tablet first enrolls; set to an empty string to disable. |
+| `font_directory` | `./fonts` | — | Optional directory containing additional TTF, OTF, WOFF, or WOFF2 fonts. |
+| `use_system_fonts` | `true` | — | Include operating-system font directories after embedded and application fonts. |
+
+Named webhook actions may also be registered in TOML. They are synchronized to
+SQLite at startup and override same-named actions created through the API:
+
+```toml
+[actions.lights_on]
+type = "webhook"
+url = "http://automation.local/hooks/lights-on"
+timeout = "5s"
+
+[actions.lights_on.headers]
+Authorization = "Bearer secret"
+```
+
+Timeouts must be positive and no longer than 30 seconds. Header values are
+stored in SQLite and redacted by the management API, but the configuration and
+database should still be protected as secrets.
 
 An empty file uses all defaults. To listen only on the local machine, use
 `127.0.0.1:PORT`; an address beginning with `:` listens on all available
