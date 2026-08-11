@@ -42,11 +42,14 @@ Implemented:
 - Per-device and broadcast assignments.
 - Native REST API, event history, SSE, and embedded UI.
 - A small compatibility layer for image-oriented VSS clients.
+- Selectable per-tablet `eink` and `smooth` pixel preparation, with `eink` as
+  the configurable enrollment default.
 
 Not implemented:
 
 - WASM/data-region providers and multi-page SVG navigation.
-- Partial display updates or waveform selection.
+- General multi-rectangle display updates or waveform selection. Delivery does
+  use one changed bounding rectangle with a white precursor when possible.
 - HTML/URL rendering and VSS sessions/apps.
 - Device configuration, reboot, sleep, firmware, or bootloader updates.
 - PV3 encryption, public-internet security, or multi-user access.

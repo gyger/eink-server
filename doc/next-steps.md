@@ -89,11 +89,13 @@ Remaining:
 - Build an E Ink typography test sheet covering Noto Sans/Serif sizes, weights,
   grayscale levels, horizontal/vertical strokes, and reversed white-on-black
   text; photograph the physical panel rather than judging only the PNG preview.
-- Add an optional E Ink text treatment after measuring that sheet. Candidates
-  include pixel-aligned placement, a minimum recommended font size/weight,
-  contrast curves before 4-bit quantization, darker edge coverage, and a small
-  morphology/stroke expansion. Keep this separate from photographic dithering
-  and make it selectable so uploaded artwork is not unexpectedly altered.
+- Physically validate the selectable `eink` rendering mode. It now removes SVG
+  supersampling, hardens high-contrast antialiased edges, and applies the
+  recovered VSS grayscale range preparation; `smooth` preserves the previous
+  renderer. The captured-frame comparison improved from 78,883 to 71,176
+  differing pixels, but is not byte-identical because VSS's WebKit input raster
+  also differs. Compare both modes on text, thin lines, curves, and a photograph
+  before retaining `eink` as the default.
 - Add a device-faithful preview mode that shows the final 16 grayscale levels
   and flags text below the tested readable size. Compare it against physical
   results before choosing defaults.

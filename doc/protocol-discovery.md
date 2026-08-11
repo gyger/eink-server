@@ -12,7 +12,8 @@ The following path is sufficiently understood for the current server:
 
 - PV3 outer framing, direction-dependent CRC32, and TCP stream boundaries.
 - Initial and heartbeat status exchange.
-- Full-screen 1024x758, 4-bit grayscale image delivery using raw-LZ4 chunks.
+- Full-screen and one changed-bounding-rectangle 1024×758, 4-bit grayscale
+  delivery using raw-LZ4 chunks.
 - Joan 6 native 180-degree framebuffer correction.
 - Type-1 post-image acknowledgement and sequence correlation.
 - Later delivery confirmation through the display-state/frame-ID status field.
@@ -21,6 +22,10 @@ The following path is sufficiently understood for the current server:
 - Battery, temperature, dimensions, firmware, heartbeat, and display-state
   telemetry.
 - Status field 15 as relative-humidity percentage on Joan 6 firmware 7.4.4407.
+- Exact replay of VSS packed pixels through the Go transport, proving the
+  remaining text-edge artifact originates in raster preparation rather than
+  PV3 framing. The selectable `eink` renderer approximates the recovered VSS
+  preparation; it is improved but not byte-identical to the WebKit raster.
 
 None of the hypotheses below blocks basic full-screen image delivery or touch
 logging on this device and firmware.
@@ -29,31 +34,34 @@ logging on this device and firmware.
 
 Known:
 
-- The current image message contains a primitive count, image type, screen ID,
-  rectangle dimensions, rectangle flags `0x102`, encoding `4`, and packed pixel
-  length.
+- The current image message contains a primitive count, image type, packed
+  rectangle origin, dimensions, rectangle flags `0x102`, encoding `4`, and
+  packed pixel length.
 - Encoding 4 is full 4-bit grayscale, two horizontal pixels per byte.
 - Full-screen 4-bit delivery works on the physical tablet.
+- VSS has sent three ordered, overlapping rectangles in one logical image;
+  later primitives overwrite earlier ones. Odd-width rectangles are packed
+  continuously rather than padded per row.
+- The Go server sends one even-X/even-width changed bounding rectangle, with a
+  white precursor and acknowledgement wait, or a full frame when no
+  connection-local framebuffer is available.
 - Joan's published specification advertises a faster 1-bit partial refresh in
   addition to its 4-bit full-screen refresh.
 
 Hypotheses:
 
 - Another encoding value selects packed 1-bit pixels.
-- The rectangle fields can describe an origin as well as width and height, or a
-  different primitive layout supplies the origin.
 - Bits in `0x102` select full/partial update, waveform, inversion, or refresh
   behavior.
-- More than one primitive may update several rectangles in one logical image.
 - The tablet may require occasional full refreshes after repeated partial
   updates to clear ghosting.
 
 Experiments:
 
-1. Capture official VSS updating a small region whose position and dimensions
-   are visually distinctive.
-2. Compare logical headers for 1-bit and 4-bit content.
-3. Change exactly one rectangle/flag/encoding field at a time only after a
+1. Capture official VSS using a confirmed 1-bit waveform and compare it with
+   the known 4-bit multi-rectangle transfer.
+2. Identify which flag or encoding selects 1-bit content.
+3. Change exactly one rectangle flag or encoding field at a time only after a
    known-good capture exists.
 4. Test repeated clock-digit updates and record latency, ghosting, battery use,
    acknowledgement, and display-state behavior.

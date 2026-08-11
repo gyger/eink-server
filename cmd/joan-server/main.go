@@ -18,6 +18,7 @@ import (
 	"joantablet/server/internal/events"
 	"joantablet/server/internal/gateway"
 	"joantablet/server/internal/httpapi"
+	"joantablet/server/internal/imageproc"
 	"joantablet/server/internal/store"
 )
 
@@ -75,6 +76,9 @@ func main() {
 		fatal(log, "opening database", err)
 	}
 	defer db.Close()
+	defaultSettings := imageproc.Defaults()
+	defaultSettings.Rendering = cfg.DefaultRendering
+	db.DefaultSettings = defaultSettings
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	hub := events.New()

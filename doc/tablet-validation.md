@@ -33,7 +33,8 @@ application status record.
 ## First-image acceptance test
 
 1. Verify UUID, firmware, battery, and 1024×758 dimensions in the UI.
-2. Upload a simple high-contrast PNG with the default contain/white settings.
+2. Confirm the tablet uses the default `eink` renderer, then upload or assign
+   `builtin:eink-verification` with the default contain/white settings.
 3. Confirm the assignment moves from `queued` to `sent`.
 4. Verify the image appears correctly oriented on the tablet.
 5. Wait for the following status and confirm the assignment becomes `delivered`.
@@ -41,6 +42,9 @@ application status record.
    verify the desired assignment survives and is sent after reconnect.
 7. With multiple tablets, verify per-device images remain independent and a
    broadcast creates one assignment per device.
+8. Compare `eink` and `smooth` on small text and thin lines. `eink` should use
+   native-resolution SVG rendering and harder high-contrast edges; `smooth`
+   should retain visibly softer 3× supersampling.
 
 The verified Joan 6 needs a built-in 180-degree native framebuffer correction.
 Leave the image setting at `rotation=0` for normally oriented source images. The
@@ -73,6 +77,9 @@ Common symptoms:
   confirm `image/svg+xml`, a positive `viewBox`, self-contained resources, and
   the 2 MiB source limit. SVG uploads do not accept image-processing query
   overrides.
+- **Small text has white channels or soft stems:** select `eink`, reassign the
+  design so it is rasterized again, and compare the processed preview. Use
+  `smooth` for photographs or artwork that benefits from ordinary antialiasing.
 
 ## Touch logging check
 

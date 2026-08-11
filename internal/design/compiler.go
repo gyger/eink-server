@@ -50,6 +50,14 @@ type Output struct {
 type Compiler struct{}
 
 func (Compiler) Render(source []byte, width, height int, values Values) (Output, error) {
+	return (Compiler{}).RenderWithOptions(source, width, height, values, RenderOptions{Smooth: true})
+}
+
+type RenderOptions struct {
+	Smooth bool
+}
+
+func (Compiler) RenderWithOptions(source []byte, width, height int, values Values, options RenderOptions) (Output, error) {
 	if err := ensureFonts(); err != nil {
 		return Output{}, fmt.Errorf("configure fonts: %w", err)
 	}
@@ -70,14 +78,22 @@ func (Compiler) Render(source []byte, width, height int, values Values) (Output,
 	if c.W <= 0 || c.H <= 0 {
 		return Output{}, errors.New("SVG has invalid rendered dimensions")
 	}
-	res := canvas.DPMM(rasterScale * math.Min(float64(width)/c.W, float64(height)/c.H))
+	scale := 1
+	if options.Smooth {
+		scale = rasterScale
+	}
+	res := canvas.DPMM(float64(scale) * math.Min(float64(width)/c.W, float64(height)/c.H))
 	raw := rasterizer.Draw(c, res, canvas.DefaultColorSpace)
-	hi := image.NewRGBA(image.Rect(0, 0, width*rasterScale, height*rasterScale))
+	hi := image.NewRGBA(image.Rect(0, 0, width*scale, height*scale))
 	draw.Draw(hi, hi.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
 	off := image.Pt((hi.Bounds().Dx()-raw.Bounds().Dx())/2, (hi.Bounds().Dy()-raw.Bounds().Dy())/2)
 	draw.Draw(hi, raw.Bounds().Add(off), raw, raw.Bounds().Min, draw.Over)
 	dst := image.NewRGBA(image.Rect(0, 0, width, height))
-	draw2.CatmullRom.Scale(dst, dst.Bounds(), hi, hi.Bounds(), draw2.Src, nil)
+	if options.Smooth {
+		draw2.CatmullRom.Scale(dst, dst.Bounds(), hi, hi.Bounds(), draw2.Src, nil)
+	} else {
+		draw.Draw(dst, dst.Bounds(), hi, hi.Bounds().Min, draw.Src)
+	}
 	var encoded bytes.Buffer
 	if err := png.Encode(&encoded, dst); err != nil {
 		return Output{}, err

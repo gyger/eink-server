@@ -39,3 +39,11 @@ func TestEmbeddedBinaryImage(t *testing.T) {
 		t.Fatalf("embedded binary image output=%d err=%v", len(out.PNG), err)
 	}
 }
+
+func TestNativeResolutionRendering(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="white"/><line x1="1" y1="1" x2="9" y2="9" stroke="black" stroke-width="1"/></svg>`)
+	out, err := (Compiler{}).RenderWithOptions(svg, 10, 10, Values{}, RenderOptions{Smooth: false})
+	if err != nil || len(out.PNG) == 0 {
+		t.Fatalf("native-resolution output=%d err=%v", len(out.PNG), err)
+	}
+}

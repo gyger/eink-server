@@ -33,14 +33,20 @@ type Gateway struct {
 }
 
 type session struct {
-	conn       net.Conn
-	writeMu    sync.Mutex
-	deliverMu  sync.Mutex
-	statusMu   sync.RWMutex
-	status     pv3.Status
-	lastSentID int64
-	ready      chan struct{}
-	readyOnce  sync.Once
+	conn        net.Conn
+	writeMu     sync.Mutex
+	deliverMu   sync.Mutex
+	statusMu    sync.RWMutex
+	status      pv3.Status
+	lastSentID  int64
+	ready       chan struct{}
+	readyOnce   sync.Once
+	ackMu       sync.Mutex
+	ackWaiters  map[uint32]chan struct{}
+	nextSeq     uint32
+	lastFrame   []byte
+	frameWidth  int
+	frameHeight int
 }
 
 func New(s *store.Store, h *events.Hub, log *slog.Logger) *Gateway {
@@ -137,6 +143,7 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 				g.Log.Warn("image acknowledgement UUID mismatch", "remote", remote, "uuid", ack.UUID)
 				continue
 			}
+			active.acknowledge(ack.Sequence)
 			assignmentID, matched, err := g.Store.MarkAcknowledged(ctx, uuid, ack.Sequence)
 			if err != nil {
 				g.Log.Warn("saving image acknowledgement", "uuid", uuid, "sequence", ack.Sequence, "error", err)
@@ -182,7 +189,7 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 		}
 		if uuid == "" {
 			uuid = st.UUID
-			active = &session{conn: c, status: st, ready: make(chan struct{})}
+			active = &session{conn: c, status: st, ready: make(chan struct{}), ackWaiters: make(map[uint32]chan struct{}), nextSeq: st.Kind + 1}
 			g.mu.Lock()
 			if old := g.connections[uuid]; old != nil && old != active {
 				old.conn.Close()
@@ -214,6 +221,7 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 		active.statusMu.Lock()
 		active.status = st
 		active.statusMu.Unlock()
+		active.advanceSequence(st.Kind)
 		if err = active.write(response); err != nil {
 			return
 		}
@@ -222,8 +230,54 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 		if g.Designs != nil {
 			g.Designs.StatusChanged(ctx, uuid)
 		}
-		g.deliver(ctx, active)
+		go g.deliver(context.Background(), active)
 	}
+}
+
+func (s *session) sequence() uint32 {
+	s.ackMu.Lock()
+	defer s.ackMu.Unlock()
+	if s.nextSeq == 0 {
+		s.nextSeq = 1
+	}
+	sequence := s.nextSeq
+	s.nextSeq++
+	if s.nextSeq == 0 {
+		s.nextSeq = 1
+	}
+	return sequence
+}
+
+func (s *session) advanceSequence(observed uint32) {
+	s.ackMu.Lock()
+	if s.nextSeq <= observed {
+		s.nextSeq = observed + 1
+		if s.nextSeq == 0 {
+			s.nextSeq = 1
+		}
+	}
+	s.ackMu.Unlock()
+}
+
+func (s *session) waitForAcknowledgement(sequence uint32) (<-chan struct{}, func()) {
+	s.ackMu.Lock()
+	ch := make(chan struct{})
+	s.ackWaiters[sequence] = ch
+	s.ackMu.Unlock()
+	return ch, func() {
+		s.ackMu.Lock()
+		delete(s.ackWaiters, sequence)
+		s.ackMu.Unlock()
+	}
+}
+
+func (s *session) acknowledge(sequence uint32) {
+	s.ackMu.Lock()
+	if ch := s.ackWaiters[sequence]; ch != nil {
+		delete(s.ackWaiters, sequence)
+		close(ch)
+	}
+	s.ackMu.Unlock()
 }
 
 func (s *session) write(data []byte) error {
@@ -257,14 +311,42 @@ func (g *Gateway) deliver(ctx context.Context, active *session) {
 		return
 	}
 	frame, err := g.Renderer.Render(ctx, render.Input{Device: render.Device{UUID: uuid, Width: pending.Width, Height: pending.Height}, ContentType: pending.ContentType, Source: pending.Source, Settings: pending.Settings})
+	primitive := changedPrimitive(frame.Packed4Bit, active.lastFrame, pending.Width, pending.Height, active.frameWidth, active.frameHeight)
 	if err == nil {
-		err = g.Store.PrepareSend(ctx, pending.ID, st.Kind)
+		clearSequence := active.sequence()
+		clear := primitive
+		clear.Pixels = make([]byte, len(primitive.Pixels))
+		for i := range clear.Pixels {
+			clear.Pixels[i] = 0xff
+		}
+		var wire []byte
+		wire, err = pv3.BuildImagePrimitives(st.UUIDBytes, clearSequence, 0, []pv3.ImagePrimitive{clear})
+		if err == nil {
+			acknowledged, cancel := active.waitForAcknowledgement(clearSequence)
+			err = active.write(wire)
+			if err == nil {
+				g.emit(ctx, uuid, "image.clear_sent", map[string]any{"assignment_id": pending.ID, "sequence": clearSequence, "x": clear.X, "y": clear.Y, "width": clear.Width, "height": clear.Height})
+				select {
+				case <-acknowledged:
+					g.emit(ctx, uuid, "image.clear_acknowledged", map[string]any{"assignment_id": pending.ID, "sequence": clearSequence})
+				case <-time.After(15 * time.Second):
+					err = errors.New("timed out waiting for intermediate image acknowledgement")
+				case <-ctx.Done():
+					err = ctx.Err()
+				}
+			}
+			cancel()
+		}
 	}
 	if err == nil {
-		var wire []byte
-		wire, err = pv3.BuildImage(st.UUIDBytes, st.Kind, pending.FrameID, pending.Width, pending.Height, frame.Packed4Bit)
+		finalSequence := active.sequence()
+		err = g.Store.PrepareSend(ctx, pending.ID, finalSequence)
 		if err == nil {
-			err = active.write(wire)
+			var wire []byte
+			wire, err = pv3.BuildImagePrimitives(st.UUIDBytes, finalSequence, pending.FrameID, []pv3.ImagePrimitive{primitive})
+			if err == nil {
+				err = active.write(wire)
+			}
 		}
 	}
 	_ = g.Store.MarkSent(ctx, pending.ID, err)
@@ -274,7 +356,47 @@ func (g *Gateway) deliver(ctx context.Context, active *session) {
 		return
 	}
 	active.lastSentID = pending.ID
+	active.lastFrame = append(active.lastFrame[:0], frame.Packed4Bit...)
+	active.frameWidth, active.frameHeight = pending.Width, pending.Height
 	g.emit(ctx, uuid, "image.sent", map[string]any{"assignment_id": pending.ID, "frame_id": pending.FrameID})
+}
+
+func changedPrimitive(current, previous []byte, width, height, previousWidth, previousHeight int) pv3.ImagePrimitive {
+	bytesPerRow := width / 2
+	if width <= 0 || height <= 0 || width%2 != 0 || len(current) != bytesPerRow*height ||
+		previousWidth != width || previousHeight != height || len(previous) != len(current) {
+		return pv3.ImagePrimitive{Width: width, Height: height, Pixels: current}
+	}
+	minX, minY, maxX, maxY := bytesPerRow, height, -1, -1
+	for y := 0; y < height; y++ {
+		for x := 0; x < bytesPerRow; x++ {
+			i := y*bytesPerRow + x
+			if current[i] != previous[i] {
+				if x < minX {
+					minX = x
+				}
+				if x > maxX {
+					maxX = x
+				}
+				if y < minY {
+					minY = y
+				}
+				if y > maxY {
+					maxY = y
+				}
+			}
+		}
+	}
+	if maxX < 0 {
+		return pv3.ImagePrimitive{Width: width, Height: height, Pixels: current}
+	}
+	rowBytes := maxX - minX + 1
+	pixels := make([]byte, 0, rowBytes*(maxY-minY+1))
+	for y := minY; y <= maxY; y++ {
+		start := y*bytesPerRow + minX
+		pixels = append(pixels, current[start:start+rowBytes]...)
+	}
+	return pv3.ImagePrimitive{X: minX * 2, Y: minY, Width: rowBytes * 2, Height: maxY - minY + 1, Pixels: pixels}
 }
 
 func (g *Gateway) emit(ctx context.Context, uuid, typ string, data any) {

@@ -61,6 +61,26 @@ func TestPersistenceAndAssignment(t *testing.T) {
 	}
 }
 
+func TestEnrollmentUsesConfiguredDefaultSettings(t *testing.T) {
+	s, err := Open(t.TempDir() + "/defaults.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.DefaultSettings.Rendering = "smooth"
+	status := pv3.Status{UUID: "11112222-3333-4444-5555-666677778888", Width: 8, Height: 4}
+	if _, err := s.UpsertStatus(context.Background(), status); err != nil {
+		t.Fatal(err)
+	}
+	device, err := s.GetDevice(context.Background(), status.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if device.Settings.Rendering != "smooth" {
+		t.Fatalf("rendering=%q", device.Settings.Rendering)
+	}
+}
+
 func TestRejectsNewerSchema(t *testing.T) {
 	path := t.TempDir() + "/future.db"
 	s, err := Open(path)

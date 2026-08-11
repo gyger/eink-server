@@ -226,6 +226,9 @@ func parseOverride(r *http.Request) (imageproc.Override, error) {
 	if v := q.Get("dither"); v != "" {
 		o.Dither = &v
 	}
+	if v := q.Get("rendering"); v != "" {
+		o.Rendering = &v
+	}
 	if v := q.Get("rotation"); v != "" {
 		n, e := strconv.Atoi(v)
 		if e != nil {

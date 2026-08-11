@@ -16,7 +16,10 @@ import (
 	"joantablet/server/internal/pv3"
 )
 
-type Store struct{ DB *sql.DB }
+type Store struct {
+	DB              *sql.DB
+	DefaultSettings imageproc.Settings
+}
 
 // SchemaVersion is the newest database schema understood by this binary.
 // Keep it at 1 until the first release; subsequent schema changes must add a
@@ -73,7 +76,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{DB: db}
+	s := &Store{DB: db, DefaultSettings: imageproc.Defaults()}
 	if err := s.migrate(context.Background()); err != nil {
 		db.Close()
 		return nil, err
@@ -172,7 +175,7 @@ func parseTime(v string) time.Time { t, _ := time.Parse(time.RFC3339Nano, v); re
 func (s *Store) UpsertStatus(ctx context.Context, st pv3.Status) (bool, error) {
 	now := nowString()
 	raw, _ := json.Marshal(st.Fields)
-	defaults := imageproc.Defaults().JSON()
+	defaults := s.DefaultSettings.JSON()
 	res, err := s.DB.ExecContext(ctx, `INSERT INTO devices(uuid,name,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,status_json,settings_json)
 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uuid) DO UPDATE SET last_seen=excluded.last_seen,battery=excluded.battery,
 temperature=excluded.temperature,humidity=excluded.humidity,width=excluded.width,height=excluded.height,firmware=excluded.firmware,display_state=excluded.display_state,status_json=excluded.status_json`,

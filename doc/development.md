@@ -16,7 +16,7 @@ Useful verification commands:
 ```sh
 go test -race ./...
 go vet ./...
-go build -o /tmp/joan-server ./cmd/joan-server
+go build -o /tmp/eink-server ./cmd/joan-server
 ```
 
 Run locally with isolated ports and state:
@@ -25,13 +25,15 @@ Run locally with isolated ports and state:
 go run ./cmd/joan-server \
   --device-listen=127.0.0.1:11114 \
   --http-listen=127.0.0.1:18080 \
-  --database=/tmp/joan-server.db
+  --database=/tmp/eink-server.db
 ```
 
 ## Dependencies
 
 - `github.com/pierrec/lz4/v4` provides pure-Go raw LZ4 block compression.
 - `modernc.org/sqlite` provides a CGO-free `database/sql` SQLite driver.
+- `github.com/tdewolff/canvas` validates and rasterizes SVG designs.
+- Pillow is used only by the optional VSS golden-raster comparison tool.
 
 The HTTP server, UI embedding, image codecs, CRC32, logging, and TCP handling use
 the Go standard library.
@@ -47,8 +49,21 @@ the Go standard library.
 - Image message headers, frame ID, encoding, packed pixels, and LZ4 round trips.
 - Literal-only LZ4 fallback for incompressible data.
 
-Other package tests cover image processing, SQLite restart persistence,
+Other package tests cover image processing and both rendering modes, SQLite restart persistence,
 assignments, native uploads, legacy device shapes, and input rejection.
+
+To compare candidate pixel preparation with the captured full-screen VSS
+reference, run from `server/`:
+
+```sh
+python3 tools/compare_vss_raster.py \
+  ../debug/test_pattern/runs/identical-frame-01/assignment-12-source.png \
+  ../debug/test_pattern/runs/vss-fullscreen-diagnostic-01/decoded/02-type-3-length-70140.png \
+  --output /tmp/vss-comparison
+```
+
+The report ranks orientation, gamma, recovered native-VSS, and crisp-edge
+candidates. `--assert-exact` exits unsuccessfully unless packed bytes match.
 
 ## Adding protocol support
 

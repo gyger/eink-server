@@ -24,16 +24,17 @@ type Settings struct {
 	Rotation   int    `json:"rotation"`
 	Invert     bool   `json:"invert"`
 	Dither     string `json:"dither"`
+	Rendering  string `json:"rendering"`
 }
 
 type Override struct {
-	Fit, Background, Dither *string
-	Rotation                *int
-	Invert                  *bool
+	Fit, Background, Dither, Rendering *string
+	Rotation                           *int
+	Invert                             *bool
 }
 
 func (o Override) Empty() bool {
-	return o.Fit == nil && o.Background == nil && o.Dither == nil && o.Rotation == nil && o.Invert == nil
+	return o.Fit == nil && o.Background == nil && o.Dither == nil && o.Rendering == nil && o.Rotation == nil && o.Invert == nil
 }
 func (o Override) Apply(s Settings) (Settings, error) {
 	if o.Fit != nil {
@@ -45,6 +46,9 @@ func (o Override) Apply(s Settings) (Settings, error) {
 	if o.Dither != nil {
 		s.Dither = *o.Dither
 	}
+	if o.Rendering != nil {
+		s.Rendering = *o.Rendering
+	}
 	if o.Rotation != nil {
 		s.Rotation = *o.Rotation
 	}
@@ -54,7 +58,9 @@ func (o Override) Apply(s Settings) (Settings, error) {
 	return s, s.Validate()
 }
 
-func Defaults() Settings { return Settings{Fit: "contain", Background: "white", Dither: "none"} }
+func Defaults() Settings {
+	return Settings{Fit: "contain", Background: "white", Dither: "none", Rendering: "eink"}
+}
 
 func (s Settings) Validate() error {
 	if s.Fit != "contain" && s.Fit != "cover" && s.Fit != "stretch" && s.Fit != "exact" {
@@ -68,6 +74,9 @@ func (s Settings) Validate() error {
 	}
 	if s.Dither != "none" && s.Dither != "floyd-steinberg" {
 		return errors.New("dither must be none or floyd-steinberg")
+	}
+	if s.Rendering != "eink" && s.Rendering != "smooth" {
+		return errors.New("rendering must be eink or smooth")
 	}
 	return nil
 }
@@ -151,6 +160,10 @@ func Process(src image.Image, width, height int, settings Settings) ([]byte, []b
 		for i := range gray.Pix {
 			gray.Pix[i] = 255 - gray.Pix[i]
 		}
+	}
+	if settings.Rendering == "eink" {
+		suppressAntialias(gray)
+		vssBeautify(gray, 1.1)
 	}
 	if settings.Dither == "floyd-steinberg" {
 		dither(gray)
@@ -261,6 +274,54 @@ func sampleGray(src image.Image, b image.Rectangle, x, y float64) uint8 {
 func quantize(img *image.Gray) {
 	for i, v := range img.Pix {
 		img.Pix[i] = uint8(math.Round(float64(v)/17)) * 17
+	}
+}
+
+// suppressAntialias hardens only pixels on high-contrast edges. Uniform gray
+// fields and low-contrast photographic detail are left alone.
+func suppressAntialias(img *image.Gray) {
+	source := append([]byte(nil), img.Pix...)
+	w, h := img.Bounds().Dx(), img.Bounds().Dy()
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			lo, hi := uint8(255), uint8(0)
+			for dy := -1; dy <= 1; dy++ {
+				yy := min(max(y+dy, 0), h-1)
+				for dx := -1; dx <= 1; dx++ {
+					xx := min(max(x+dx, 0), w-1)
+					v := source[yy*img.Stride+xx]
+					lo, hi = min(lo, v), max(hi, v)
+				}
+			}
+			if int(hi)-int(lo) < 128 {
+				continue
+			}
+			v := source[y*img.Stride+x]
+			if int(v)-int(lo) <= int(hi)-int(v) {
+				img.Pix[y*img.Stride+x] = lo
+			} else {
+				img.Pix[y*img.Stride+x] = hi
+			}
+		}
+	}
+}
+
+// vssBeautify reproduces the grayscale path recovered from VSS beautify.cpp:
+// a clipped linear LUT, integer 0..15 reduction, then range expansion.
+func vssBeautify(img *image.Gray, gamma float64) {
+	levels := make([]uint8, len(img.Pix))
+	lo, hi := uint8(15), uint8(0)
+	for i, value := range img.Pix {
+		corrected := math.Trunc(float64(value) / gamma)
+		level := uint8(math.Round(corrected * 15 / 255))
+		levels[i] = level
+		lo, hi = min(lo, level), max(hi, level)
+	}
+	if lo == hi {
+		lo, hi = 0, 15
+	}
+	for i, level := range levels {
+		img.Pix[i] = uint8(math.Round(float64(level-lo) * 255 / float64(hi-lo)))
 	}
 }
 

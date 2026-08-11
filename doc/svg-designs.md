@@ -4,6 +4,14 @@ SVG designs provide self-contained, interactive tablet screens. They can be
 uploaded directly to a device, stored for reuse in SQLite, loaded from the
 configured design directory, or selected from the built-in designs.
 
+SVG designs use the tablet's `rendering` image setting. The shipped `eink`
+mode renders at native panel resolution and suppresses antialias coverage at
+high-contrast edges before four-bit conversion. Select `smooth` for the older
+3× supersampled output. Whole-pixel coordinates and strokes give the most
+predictable E Ink result.
+`default_rendering` chooses the value stored when a tablet first enrolls; it
+does not retroactively overwrite existing per-tablet settings.
+
 ## Dynamic values
 
 A `data-value` attribute on a `text` element replaces its text content during
@@ -76,12 +84,19 @@ Webhook actions receive a JSON POST:
 ## Sources and pages
 
 Design IDs use `builtin:`, `file:`, and `db:` prefixes. The server includes
-`builtin:status` and `builtin:touch-demo`. New tablets receive
+`builtin:status`, `builtin:touch-demo`, and `builtin:eink-verification`. New tablets receive
 `builtin:status` by default; `default_design` can select another design or be
 set to an empty string to disable automatic assignment.
 The status design is a clock and calendar dashboard inspired by the checked-in
 sample dashboard. Its clock and update label use `system.time`; the February
 2026 calendar is static for now.
+
+`builtin:eink-verification` is a native 1024×758 diagnostic screen containing
+all 16 protocol grayscale values, one- and two-pixel horizontal and vertical
+patterns, diagonals, circles, isolated pixels, reversed text, and Noto Sans at
+several sizes and weights. Photograph it close up on the tablet and compare it
+with the server preview. The grayscale swatches are numbered by their packed
+nibble value, where displayed source intensity is `n × 17`.
 Filesystem loading is top-level and occurs at startup or through the reload
 API.
 

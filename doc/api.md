@@ -32,7 +32,8 @@ defaults, send the complete settings object:
     "background": "white",
     "rotation": 0,
     "invert": false,
-    "dither": "none"
+    "dither": "none",
+    "rendering": "eink"
   }
 }
 ```
@@ -60,9 +61,17 @@ Both upload routes accept optional query overrides:
 | `rotation` | `0`, `90`, `180`, `270` | Device setting; initially `0` |
 | `invert` | Boolean | Device setting; initially `false` |
 | `dither` | `none`, `floyd-steinberg` | Device setting; initially `none` |
+| `rendering` | `eink`, `smooth` | Device setting; enrollment default is configured by `default_rendering` (`eink` when omitted) |
 
 Uploads are limited to 20 MiB and decoded images to 20 megapixels. `exact`
 rejects a source whose post-rotation dimensions differ from the display.
+`eink` uses native-resolution SVG rendering, hardens high-contrast edge
+coverage, and applies the recovered VSS grayscale range preparation. `smooth`
+retains 3× SVG supersampling and ordinary grayscale quantization.
+The configured `default_rendering` supplies this setting only when a tablet
+first enrolls. Changing it does not overwrite enrolled tablets. Query
+overrides apply to PNG/JPEG uploads; select the SVG rendering mode through the
+tablet's stored `image_defaults`.
 
 Assignment states are:
 
@@ -91,7 +100,7 @@ Opens a Server-Sent Events stream. Event names currently include:
 
 - `device.connected`, `device.disconnected`, `device.enrolled`, `device.status`
 - `image.queued`, `image.sent`, `image.acknowledged`, `image.delivered`,
-  `image.failed`
+  `image.failed`, `image.clear_sent`, `image.clear_acknowledged`
 
 SVG touch and action events include `touch.tap`, `action.unresolved`,
 `action.started`, `action.succeeded`, and `action.failed`.
@@ -103,7 +112,9 @@ SVG touch and action events include `touch.tap`, `action.unresolved`,
 - `PUT /api/v1/designs/{name}` stores a reusable database SVG.
 - `DELETE /api/v1/designs/{name}` deletes a database SVG.
 - `POST /api/v1/designs:reload` rescans the configured design directory.
-- `PUT /api/v1/devices/{uuid}/design` assigns `{"design_id":"builtin:status"}`.
+- `PUT /api/v1/devices/{uuid}/design` assigns a design, for example
+  `{"design_id":"builtin:status"}`. Use `builtin:eink-verification` for the
+  native-resolution grayscale, line, and typography diagnostic screen.
 - `DELETE /api/v1/devices/{uuid}/design` stops dynamic refresh without blanking
   the displayed frame.
 - `GET /api/v1/actions` lists actions with header values redacted.

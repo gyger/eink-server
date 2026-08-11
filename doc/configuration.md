@@ -39,6 +39,7 @@ log_format = "text"
 system_name = "EInk Server"
 design_directory = "./designs"
 default_design = "builtin:status"
+default_rendering = "eink"
 font_directory = "./fonts"
 use_system_fonts = true
 ```
@@ -54,6 +55,7 @@ An example file is included as `eink-server.example.toml`.
 | `system_name` | `EInk Server` | — | Value available to SVG designs as `${system.name}`. |
 | `design_directory` | `./designs` | — | Optional directory scanned for top-level SVG designs. |
 | `default_design` | `builtin:status` | — | Design assigned when an unknown tablet first enrolls; set to an empty string to disable. |
+| `default_rendering` | `eink` | — | Image rendering mode assigned when a tablet first enrolls: `eink` or `smooth`. |
 | `font_directory` | `./fonts` | — | Optional directory containing additional TTF, OTF, WOFF, or WOFF2 fonts. |
 | `use_system_fonts` | `true` | — | Include operating-system font directories after embedded and application fonts. |
 
@@ -73,6 +75,11 @@ Authorization = "Bearer secret"
 Timeouts must be positive and no longer than 30 seconds. Header values are
 stored in SQLite and redacted by the management API, but the configuration and
 database should still be protected as secrets.
+
+`default_rendering` affects newly enrolled tablets. Their selected value is
+then stored in SQLite and can be changed independently through the management
+page or device API. `eink` uses native-resolution SVG rendering and the E Ink
+pixel-preparation path; `smooth` retains 3× supersampling.
 
 An empty file uses all defaults. To listen only on the local machine, use
 `127.0.0.1:PORT`; an address beginning with `:` listens on all available

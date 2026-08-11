@@ -3,6 +3,7 @@ package design
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -56,10 +57,17 @@ const builtinStatus = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024
 </svg>`
 const builtinTouch = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 758"><rect width="1024" height="758" fill="white"/><text x="50" y="70" font-family="sans-serif" font-size="42">Touch action test</text><rect id="button-one" x="80" y="140" width="380" height="220" rx="20" fill="#dddddd" stroke="black" stroke-width="5" data-action="button.one" data-region="button-one"/><text x="170" y="270" font-family="sans-serif" font-size="44">Button one</text><rect id="button-two" x="560" y="140" width="380" height="220" rx="20" fill="#dddddd" stroke="black" stroke-width="5" data-action="button.two" data-region="button-two"/><text x="650" y="270" font-family="sans-serif" font-size="44">Button two</text></svg>`
 
+//go:embed builtins/eink-verification.svg
+var builtinEInkVerification []byte
+
 func (s *Service) Init(ctx context.Context) error { return s.Reload(ctx) }
 
 func (s *Service) Reload(ctx context.Context) error {
-	for _, d := range []store.Design{{ID: "builtin:status", Name: "Time and calendar", Source: "builtin", SVG: []byte(builtinStatus)}, {ID: "builtin:touch-demo", Name: "Touch demo", Source: "builtin", SVG: []byte(builtinTouch)}} {
+	for _, d := range []store.Design{
+		{ID: "builtin:status", Name: "Time and calendar", Source: "builtin", SVG: []byte(builtinStatus)},
+		{ID: "builtin:touch-demo", Name: "Touch demo", Source: "builtin", SVG: []byte(builtinTouch)},
+		{ID: "builtin:eink-verification", Name: "E Ink renderer and protocol verification", Source: "builtin", SVG: builtinEInkVerification},
+	} {
 		if err := s.validate(d.SVG); err != nil {
 			return fmt.Errorf("built-in %s: %w", d.ID, err)
 		}
@@ -177,7 +185,7 @@ func (s *Service) Render(ctx context.Context, uuid string, force bool) (store.As
 	if !force && active.ValuesHash != "" && store.ValuesHash(values, active.Dependencies) == active.ValuesHash {
 		return store.Assignment{}, nil
 	}
-	out, err := s.Compiler.Render(active.SVG, int(device.Width), int(device.Height), values)
+	out, err := s.Compiler.RenderWithOptions(active.SVG, int(device.Width), int(device.Height), values, RenderOptions{Smooth: device.Settings.Rendering == "smooth"})
 	if err != nil {
 		return store.Assignment{}, err
 	}

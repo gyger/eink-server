@@ -41,6 +41,31 @@ func TestSettingsValidation(t *testing.T) {
 	if s.Validate() != nil {
 		t.Fatal("valid settings rejected")
 	}
+	s.Rendering = "unknown"
+	if s.Validate() == nil {
+		t.Fatal("expected rendering error")
+	}
+}
+
+func TestSuppressAntialiasPreservesFieldsAndHardensEdges(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 5, 1))
+	copy(img.Pix, []byte{85, 85, 0, 100, 255})
+	suppressAntialias(img)
+	if img.Pix[0] != 85 || img.Pix[1] != 85 {
+		t.Fatalf("uniform gray field changed: %v", img.Pix)
+	}
+	if img.Pix[3] != 0 {
+		t.Fatalf("antialiased edge was not hardened: %v", img.Pix)
+	}
+}
+
+func TestVSSBeautifyExpandsFourBitRange(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 3, 1))
+	copy(img.Pix, []byte{0, 102, 255})
+	vssBeautify(img, 1.1)
+	if img.Pix[0] != 0 || img.Pix[1] != 91 || img.Pix[2] != 255 {
+		t.Fatalf("unexpected VSS levels: %v", img.Pix)
+	}
 }
 
 func TestRotatePacked180(t *testing.T) {

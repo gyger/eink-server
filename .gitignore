@@ -1,5 +1,6 @@
 # Compiled server and build output
 /joan-server
+/eink-server
 /bin/
 /dist/
 *.exe
@@ -21,6 +22,8 @@ coverage.out
 *.coverprofile
 *.prof
 *.pprof
+__pycache__/
+*.py[cod]
 
 # Local configuration and secrets
 /eink-server.toml

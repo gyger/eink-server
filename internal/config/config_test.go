@@ -29,12 +29,12 @@ func TestEmptyConfigUsesDefaults(t *testing.T) {
 }
 
 func TestConfigOverlaysDefaults(t *testing.T) {
-	path := writeConfig(t, "http_listen = \"127.0.0.1:9090\"\nlog_format = \"json\"\n")
+	path := writeConfig(t, "http_listen = \"127.0.0.1:9090\"\nlog_format = \"json\"\ndefault_rendering = \"smooth\"\n")
 	got, err := Load(path, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.HTTPListen != "127.0.0.1:9090" || got.LogFormat != "json" || got.DeviceListen != Defaults().DeviceListen {
+	if got.HTTPListen != "127.0.0.1:9090" || got.LogFormat != "json" || got.DefaultRendering != "smooth" || got.DeviceListen != Defaults().DeviceListen {
 		t.Fatalf("unexpected config: %+v", got)
 	}
 }
@@ -68,6 +68,7 @@ func TestUnknownAndInvalidValuesFail(t *testing.T) {
 		"http_listen = \"8080\"",
 		"log_format = \"pretty\"",
 		"default_design = \"unknown\"",
+		"default_rendering = \"antialiased\"",
 		"http_listen =",
 	} {
 		if _, err := Load(writeConfig(t, contents), true); err == nil {

@@ -199,6 +199,43 @@ func TestBuildImage(t *testing.T) {
 	}
 }
 
+func TestBuildImagePrimitives(t *testing.T) {
+	var id [16]byte
+	primitives := []ImagePrimitive{
+		{X: 3, Y: 4, Width: 2, Height: 2, Pixels: []byte{0x12, 0x34}},
+		{X: 9, Y: 10, Width: 3, Height: 2, Pixels: []byte{0x56, 0x78, 0x90}},
+	}
+	wire, err := BuildImagePrimitives(id, 6, 7, primitives)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := ReadRecord(bytes.NewReader(wire))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logical := decompress(t, rec.Payload)
+	if binary.LittleEndian.Uint32(logical[40:44]) != 2 || binary.LittleEndian.Uint32(logical[24:28]) != 6 {
+		t.Fatalf("bad image header: %x", logical[:56])
+	}
+	if binary.LittleEndian.Uint32(logical[60:64]) != uint32(4<<16|3) ||
+		binary.LittleEndian.Uint32(logical[86:90]) != uint32(10<<16|9) {
+		t.Fatal("packed origins differ")
+	}
+	if !bytes.Equal(logical[80:82], primitives[0].Pixels) || !bytes.Equal(logical[106:109], primitives[1].Pixels) {
+		t.Fatal("primitive pixels differ")
+	}
+}
+
+func TestChunkHeaderContainsFinalIndex(t *testing.T) {
+	chunks, err := CompressChunks(make([]byte, chunkSize*2+1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := binary.LittleEndian.Uint32(chunks[4:8]); got != 2 {
+		t.Fatalf("final index=%d, want 2", got)
+	}
+}
+
 func TestIncompressibleChunkUsesLiteralBlock(t *testing.T) {
 	src := make([]byte, chunkSize)
 	for i := range src {

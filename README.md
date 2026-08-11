@@ -34,6 +34,7 @@ With no configuration file or flags, the defaults are:
 - `:11113` — EInk tablet TCP protocol
 - `:8080` — web UI and REST API
 - `./data/eink.db` — SQLite state
+- `eink` — default rendering mode for newly enrolled tablets
 
 At startup, the server looks for `eink-server.toml` beside its executable. A
 missing or empty file uses all defaults. Use `--config /path/to/config.toml` to
@@ -46,6 +47,8 @@ Newly enrolled tablets are automatically sent the `builtin:status` clock and
 calendar dashboard. Set the tablet's name and location in the web UI; both are
 available to SVG designs. Set `default_design = ""` in TOML to leave a new
 tablet's current screen unchanged instead.
+Set `default_rendering = "smooth"` to make newly enrolled tablets use the
+supersampled renderer; the shipped default is `eink`.
 
 This release has no authentication or TLS. Do not expose either listener to the
 public internet.
@@ -76,8 +79,12 @@ curl -X PUT -H 'Content-Type: image/svg+xml' \
 ```
 
 Image options are `fit=contain|cover|stretch|exact`,
-`background=white|black`, `rotation=0|90|180|270`, `invert=true|false`, and
-`dither=none|floyd-steinberg`. Per-device defaults can be changed with
+`background=white|black`, `rotation=0|90|180|270`, `invert=true|false`,
+`dither=none|floyd-steinberg`, and `rendering=eink|smooth`. The default `eink`
+mode renders SVGs at native resolution, suppresses high-contrast antialiased
+edges, and applies the recovered VSS grayscale preparation. Use `smooth` for
+photographs or designs where ordinary antialiasing is preferred. Per-device
+defaults can be changed with
 `PATCH /api/v1/devices/{uuid}` or the web interface.
 
 Compatibility routes are intentionally limited to `POST /login`,
@@ -95,6 +102,7 @@ from USB (USB changes its normal display-transfer behavior):
    assignment from `sent` to `delivered`.
 4. Restart the server and confirm an offline queued image survives.
 
-WASM widgets, multi-page navigation, partial updates, URL rendering,
-encryption, bootloader/firmware updates, and verified larger-device support are
-future work.
+WASM widgets, multi-page navigation, general multi-rectangle/waveform control,
+URL rendering, encryption, bootloader/firmware updates, and verified
+larger-device support are future work. Current delivery can update one changed
+bounding rectangle with a white precursor.

@@ -81,18 +81,81 @@ The server sends a type-3 record containing an LZ4-chunked logical image:
 | 20 | Message type `5` |
 | 24 | Matching status kind |
 | 36 | Opaque frame ID |
-| 40 | Primitive count `1` |
-| 56 | Image type `1` |
-| 60 | Screen ID `0` |
-| 64 | Width and height as two `uint16` values |
-| 68 | Rectangle flags `0x102` |
-| 72 | Encoding `4` |
-| 76 | Packed pixel length |
-| 80 | Packed pixels |
+| 40 | Primitive count |
+| 44 | Image options `0` |
+| 48 | Combined primitive payload length |
+| 52 | Reserved `0` |
 
-Encoding 4 stores two horizontal pixels per byte. The high nibble is the first
-pixel, the low nibble the second, and each nibble maps to intensity `n × 17`.
-The current encoder therefore requires an even display width.
+Each primitive then has a 24-byte header followed immediately by its packed
+pixels:
+
+| Primitive offset | Meaning |
+|---:|---|
+| 0 | Image type `1` |
+| 4 | Packed origin: X in the low 16 bits, Y in the high 16 bits |
+| 8 | Width and height as two `uint16` values |
+| 12 | Rectangle flags `0x102` |
+| 16 | Encoding `4` |
+| 20 | Packed pixel length |
+| 24 | Packed pixels |
+
+The next primitive begins immediately after the preceding pixel payload. A
+full-screen update is the special case of one primitive with origin `(0,0)`.
+The field at logical offset 60 was previously described as a screen ID because
+all full-screen captures contained zero; a three-rectangle VSS capture proves
+that it is the packed origin.
+
+Encoding 4 stores two pixels per byte. The high nibble is first, the low nibble
+second, and each nibble maps to intensity `n × 17`. Packing is continuous over
+the rectangle rather than padded per row. VSS sent an odd-width `943×312`
+rectangle successfully because its total pixel count was even. An encoder must
+therefore require an even rectangle pixel count, not necessarily an even
+width.
+
+### Partial updates
+
+Official VSS enables partial updates through both session option
+`ChangesAutodetect=true,threshold=0` and device option
+`MergeRegions=true,threshold=5,thresholdStep=10`. In the captured diagnostic
+refresh it sent three primitives in each logical image:
+
+| Origin | Size | Packed bytes |
+|---|---:|---:|
+| `(43,311)` | `382×394` | 75,254 |
+| `(400,400)` | `576×320` | 92,160 |
+| `(41,24)` | `943×312` | 147,108 |
+
+The rectangles may overlap. In the final frame their overlapping pixels were
+not identical, so primitive order is significant: later primitives must be
+applied over earlier ones. No separate outer record or refresh command is
+needed; `primitive_count=3` and the concatenated primitive records describe
+the complete partial update. The tablet returned one type-1 acknowledgement
+for the entire logical image, not one per rectangle.
+
+VSS first sent an intermediate browser render (`Loading ...`) with
+`status_kind=5`, received its acknowledgement, and then sent the final page
+using the same rectangle geometry with `status_kind=6`. This was two normal
+logical frames, not evidence of a special clear command. The intermediate
+frame happened to clear most of the affected area to white. Whether the clean
+physical result depends on partial rectangles, the progressing status kind,
+or that intervening light frame remains to be isolated experimentally.
+
+The server now follows the observed sequencing model for delivery. It computes
+an even-X/even-width bounding rectangle around changed packed pixels (or uses a
+full-screen rectangle when no prior connection-local framebuffer is known),
+sends that region as white with sequence `N`, waits for the matching type-1
+acknowledgement, and then sends the final region with sequence `N+1`. Rectangle
+coordinates are expressed in the native wire orientation. A physical test
+confirmed that this sequence alone does not remove the text-channel artifact.
+Conversely, replaying VSS's exact full-screen packed pixels through this Go
+framing produced the same flawless physical result as VSS. The remaining
+graphics defect is therefore in raster beautification rather than these
+protocol fields. The server now defaults to a selectable `eink` preparation
+mode that uses native-resolution SVG rendering, hardens high-contrast edge
+coverage, and reproduces the recovered VSS grayscale range mapping. The older
+3× supersampled path remains available as `smooth`. This improves the captured
+reference comparison but is not yet byte-identical to VSS's WebKit raster, so
+physical acceptance remains required.
 
 The verified Joan 6 panel presents this raw framebuffer rotated by 180 degrees
 relative to the intended screen orientation. Immediately before PV3 encoding,
@@ -102,9 +165,12 @@ preview remains in the intended physical orientation, and `rotation=0` displays
 upright on the tablet.
 
 Logical data is split into chunks of at most 4,800 bytes. Each chunk has a
-24-byte header containing its index, logical header size `80`, compressed size,
-uncompressed size, flags, and reserved word. Normal chunks use raw LZ4. If noisy
-data does not compress smaller, the server emits a valid LZ4 literal-only block.
+24-byte header containing its zero-based index, the final zero-based chunk
+index, compressed size, uncompressed size, flags, and reserved word. Earlier
+81-chunk captures made the second word look like a fixed value `80`; a
+66-chunk partial update consistently used `65`. Normal chunks use raw LZ4. If
+noisy data does not compress smaller, the server emits a valid LZ4 literal-only
+block.
 
 The image checksum used by VSS did not match ordinary CRC32 calculations over
 the captured pixels or message body. This server treats the field as an opaque,

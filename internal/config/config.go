@@ -18,16 +18,17 @@ import (
 const DefaultFilename = "eink-server.toml"
 
 type Config struct {
-	DeviceListen    string                  `toml:"device_listen"`
-	HTTPListen      string                  `toml:"http_listen"`
-	Database        string                  `toml:"database"`
-	LogFormat       string                  `toml:"log_format"`
-	SystemName      string                  `toml:"system_name"`
-	DesignDirectory string                  `toml:"design_directory"`
-	DefaultDesign   string                  `toml:"default_design"`
-	FontDirectory   string                  `toml:"font_directory"`
-	UseSystemFonts  bool                    `toml:"use_system_fonts"`
-	Actions         map[string]ActionConfig `toml:"actions"`
+	DeviceListen     string                  `toml:"device_listen"`
+	HTTPListen       string                  `toml:"http_listen"`
+	Database         string                  `toml:"database"`
+	LogFormat        string                  `toml:"log_format"`
+	SystemName       string                  `toml:"system_name"`
+	DesignDirectory  string                  `toml:"design_directory"`
+	DefaultDesign    string                  `toml:"default_design"`
+	DefaultRendering string                  `toml:"default_rendering"`
+	FontDirectory    string                  `toml:"font_directory"`
+	UseSystemFonts   bool                    `toml:"use_system_fonts"`
+	Actions          map[string]ActionConfig `toml:"actions"`
 }
 
 type ActionConfig struct {
@@ -39,16 +40,17 @@ type ActionConfig struct {
 
 func Defaults() Config {
 	return Config{
-		DeviceListen:    ":11113",
-		HTTPListen:      ":8080",
-		Database:        "./data/eink.db",
-		LogFormat:       "text",
-		SystemName:      "EInk Server",
-		DesignDirectory: "./designs",
-		DefaultDesign:   "builtin:status",
-		FontDirectory:   "./fonts",
-		UseSystemFonts:  true,
-		Actions:         map[string]ActionConfig{},
+		DeviceListen:     ":11113",
+		HTTPListen:       ":8080",
+		Database:         "./data/eink.db",
+		LogFormat:        "text",
+		SystemName:       "EInk Server",
+		DesignDirectory:  "./designs",
+		DefaultDesign:    "builtin:status",
+		DefaultRendering: "eink",
+		FontDirectory:    "./fonts",
+		UseSystemFonts:   true,
+		Actions:          map[string]ActionConfig{},
 	}
 }
 
@@ -111,6 +113,9 @@ func (c Config) Validate() error {
 	}
 	if c.DefaultDesign != "" && !regexp.MustCompile(`^(builtin|file|db):[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`).MatchString(c.DefaultDesign) {
 		return errors.New("default_design must be empty or a builtin:, file:, or db: design ID")
+	}
+	if c.DefaultRendering != "eink" && c.DefaultRendering != "smooth" {
+		return errors.New("default_rendering must be eink or smooth")
 	}
 	namePattern := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 	for name, action := range c.Actions {
