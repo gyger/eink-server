@@ -7,6 +7,8 @@ and delivers the newest desired frame when the tablet checks in.
 > [!IMPORTANT]
 > This project has been heavily vibe coded with guidance from a human.
 > The generated code has been accepted without line-by-line human validation.
+> The protocol was reverse engineered from packet captures, so parts of its
+> behavior may remain unknown or incomplete.
 
 Detailed documentation is available in [doc/README.md](doc/README.md).
 

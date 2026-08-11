@@ -11,6 +11,8 @@ browser renderer, Redis, Postgres, or a multi-user administration system.
   concurrency model.
 - [PV3 protocol](protocol.md) — observed framing, status, responses, image
   encoding, acknowledgements, and current protocol limits.
+- [Protocol discovery backlog](protocol-discovery.md) — remaining hypotheses,
+  evidence gaps, and proposed capture experiments.
 - [HTTP API](api.md) — native REST API, processing options, SSE, and legacy
   compatibility routes.
 - [Configuration](configuration.md) — TOML format, defaults, discovery, and
