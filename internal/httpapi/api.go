@@ -267,7 +267,7 @@ func (a *API) legacyDevices(w http.ResponseWriter, r *http.Request) {
 		if name == "" {
 			name = d.UUID[:12]
 		}
-		out = append(out, map[string]any{"Uuid": d.UUID, "Options": map[string]string{"Allowed": "true", "Revision": name}, "Status": map[string]any{"Battery": d.Battery, "Temperature": d.Temperature}, "Displays": []map[string]uint32{{"Width": d.Width, "Height": d.Height}}})
+		out = append(out, map[string]any{"Uuid": d.UUID, "Options": map[string]string{"Allowed": "true", "Revision": name}, "Status": map[string]any{"Battery": d.Battery, "Temperature": d.Temperature, "Humidity": d.Humidity}, "Displays": []map[string]uint32{{"Width": d.Width, "Height": d.Height}}})
 	}
 	writeJSON(w, 200, out)
 }

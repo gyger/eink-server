@@ -43,6 +43,7 @@ used by the server are:
 | 10 | Current display-state/frame ID |
 | 11 | Battery percent |
 | 13 | Temperature |
+| 15 | Relative humidity percent |
 | 17–19 | Firmware major, minor, revision |
 | 29 | Heartbeat setting |
 | 39 | Display width |

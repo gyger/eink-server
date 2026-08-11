@@ -14,6 +14,7 @@ type Status struct {
 	Fields           map[uint32]uint32
 	Battery          uint32
 	Temperature      int32
+	Humidity         uint32
 	Width            uint32
 	Height           uint32
 	Firmware         string
@@ -44,6 +45,7 @@ func ParseStatus(rec Record) (Status, error) {
 	}
 	s.Battery = s.Fields[11]
 	s.Temperature = int32(s.Fields[13])
+	s.Humidity = s.Fields[15]
 	s.DisplayState = s.Fields[10]
 	s.Width, s.Height = s.Fields[39], s.Fields[40]
 	s.HeartbeatMinutes = s.Fields[29]

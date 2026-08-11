@@ -36,7 +36,7 @@ func TestParseCapturedStatus(t *testing.T) {
 	if s.UUID != "30004f00-0650-4858-5239-312000000000" {
 		t.Fatalf("uuid %s", s.UUID)
 	}
-	if s.Width != 1024 || s.Height != 758 || s.Battery != 100 || s.Firmware != "7.4.4407" {
+	if s.Width != 1024 || s.Height != 758 || s.Battery != 100 || s.Humidity != 28 || s.Firmware != "7.4.4407" {
 		t.Fatalf("unexpected status: %+v", s)
 	}
 }

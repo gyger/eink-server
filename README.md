@@ -4,6 +4,10 @@ A small self-hosted Go gateway for Joan/Visionect protocol-v3 tablets. It accept
 PNG/JPEG images, converts them to the tablet's packed 4-bit grayscale format,
 and delivers the newest desired frame when the tablet checks in.
 
+> [!IMPORTANT]
+> This project has been heavily vibe coded with guidance from a human.
+> The generated code has been accepted without line-by-line human validation.
+
 Detailed documentation is available in [doc/README.md](doc/README.md).
 
 The captured Joan 6 (1024×758, firmware 7.4.4407) is the verified target. Other

@@ -207,7 +207,7 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 			return
 		}
 		active.readyOnce.Do(func() { close(active.ready) })
-		g.emit(ctx, uuid, "device.status", map[string]any{"battery": st.Battery, "temperature": st.Temperature, "display_state": st.DisplayState})
+		g.emit(ctx, uuid, "device.status", map[string]any{"battery": st.Battery, "temperature": st.Temperature, "humidity": st.Humidity, "display_state": st.DisplayState})
 		g.deliver(ctx, active)
 	}
 }

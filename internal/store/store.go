@@ -25,6 +25,7 @@ type Device struct {
 	LastSeen     time.Time          `json:"last_seen"`
 	Battery      uint32             `json:"battery"`
 	Temperature  int32              `json:"temperature"`
+	Humidity     uint32             `json:"humidity"`
 	Width        uint32             `json:"width"`
 	Height       uint32             `json:"height"`
 	Firmware     string             `json:"firmware"`
@@ -82,7 +83,8 @@ CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
 INSERT INTO schema_version(version) SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM schema_version);
 CREATE TABLE IF NOT EXISTS devices (
  uuid TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
- battery INTEGER NOT NULL DEFAULT 0, temperature INTEGER NOT NULL DEFAULT 0, width INTEGER NOT NULL DEFAULT 0,
+ battery INTEGER NOT NULL DEFAULT 0, temperature INTEGER NOT NULL DEFAULT 0, humidity INTEGER NOT NULL DEFAULT 0,
+ width INTEGER NOT NULL DEFAULT 0,
  height INTEGER NOT NULL DEFAULT 0, firmware TEXT NOT NULL DEFAULT '', display_state INTEGER NOT NULL DEFAULT 0,
  status_json TEXT NOT NULL DEFAULT '{}', settings_json TEXT NOT NULL
 );
@@ -115,10 +117,10 @@ func (s *Store) UpsertStatus(ctx context.Context, st pv3.Status) (bool, error) {
 	now := nowString()
 	raw, _ := json.Marshal(st.Fields)
 	defaults := imageproc.Defaults().JSON()
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO devices(uuid,name,first_seen,last_seen,battery,temperature,width,height,firmware,display_state,status_json,settings_json)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uuid) DO UPDATE SET last_seen=excluded.last_seen,battery=excluded.battery,
-temperature=excluded.temperature,width=excluded.width,height=excluded.height,firmware=excluded.firmware,display_state=excluded.display_state,status_json=excluded.status_json`,
-		st.UUID, "", now, now, st.Battery, st.Temperature, st.Width, st.Height, st.Firmware, st.DisplayState, string(raw), defaults)
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO devices(uuid,name,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,status_json,settings_json)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uuid) DO UPDATE SET last_seen=excluded.last_seen,battery=excluded.battery,
+temperature=excluded.temperature,humidity=excluded.humidity,width=excluded.width,height=excluded.height,firmware=excluded.firmware,display_state=excluded.display_state,status_json=excluded.status_json`,
+		st.UUID, "", now, now, st.Battery, st.Temperature, st.Humidity, st.Width, st.Height, st.Firmware, st.DisplayState, string(raw), defaults)
 	if err != nil {
 		return false, err
 	}
@@ -165,7 +167,7 @@ func (s *Store) sampleStatus(ctx context.Context, st pv3.Status, raw, now string
 }
 
 func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT uuid,name,first_seen,last_seen,battery,temperature,width,height,firmware,display_state,settings_json FROM devices ORDER BY name,uuid`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT uuid,name,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,settings_json FROM devices ORDER BY name,uuid`)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +198,7 @@ type scanner interface{ Scan(...any) error }
 func scanDevice(row scanner) (Device, error) {
 	var d Device
 	var first, last, settings string
-	err := row.Scan(&d.UUID, &d.Name, &first, &last, &d.Battery, &d.Temperature, &d.Width, &d.Height, &d.Firmware, &d.DisplayState, &settings)
+	err := row.Scan(&d.UUID, &d.Name, &first, &last, &d.Battery, &d.Temperature, &d.Humidity, &d.Width, &d.Height, &d.Firmware, &d.DisplayState, &settings)
 	if err != nil {
 		return d, err
 	}
@@ -207,7 +209,7 @@ func scanDevice(row scanner) (Device, error) {
 }
 
 func (s *Store) GetDevice(ctx context.Context, uuid string) (Device, error) {
-	row := s.DB.QueryRowContext(ctx, `SELECT uuid,name,first_seen,last_seen,battery,temperature,width,height,firmware,display_state,settings_json FROM devices WHERE uuid=?`, uuid)
+	row := s.DB.QueryRowContext(ctx, `SELECT uuid,name,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,settings_json FROM devices WHERE uuid=?`, uuid)
 	d, err := scanDevice(row)
 	if err == nil {
 		d.Desired, _ = s.latestAssignment(ctx, uuid)

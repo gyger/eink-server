@@ -31,7 +31,7 @@ func testAPI(t *testing.T) (*API, *store.Store, *fakeConnections) {
 	}
 	t.Cleanup(func() { s.Close() })
 	uuid := "00112233-4455-6677-8899-aabbccddeeff"
-	_, err = s.UpsertStatus(context.Background(), pv3.Status{UUID: uuid, Battery: 75, Temperature: 22, Width: 8, Height: 4, Firmware: "7.4.4407", Fields: map[uint32]uint32{}})
+	_, err = s.UpsertStatus(context.Background(), pv3.Status{UUID: uuid, Battery: 75, Temperature: 22, Humidity: 41, Width: 8, Height: 4, Firmware: "7.4.4407", Fields: map[uint32]uint32{15: 41}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,6 +76,9 @@ func TestDeviceAndLegacyShapes(t *testing.T) {
 		var items []map[string]any
 		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil || len(items) != 1 {
 			t.Fatalf("%s body=%s err=%v", path, w.Body.String(), err)
+		}
+		if path == "/api/v1/devices" && items[0]["humidity"] != float64(41) {
+			t.Fatalf("%s humidity=%v", path, items[0]["humidity"])
 		}
 	}
 	w := httptest.NewRecorder()

@@ -15,7 +15,7 @@ func TestPersistenceAndAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st := pv3.Status{UUID: "00112233-4455-6677-8899-aabbccddeeff", Battery: 88, Temperature: 21, Width: 1024, Height: 758, Firmware: "7.4.4407", Fields: map[uint32]uint32{10: 88}}
+	st := pv3.Status{UUID: "00112233-4455-6677-8899-aabbccddeeff", Battery: 88, Temperature: 21, Humidity: 43, Width: 1024, Height: 758, Firmware: "7.4.4407", Fields: map[uint32]uint32{10: 88, 15: 43}}
 	isNew, err := s.UpsertStatus(ctx, st)
 	if err != nil || !isNew {
 		t.Fatalf("new=%v err=%v", isNew, err)
@@ -49,7 +49,7 @@ func TestPersistenceAndAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Battery != 88 || d.Desired == nil || d.Desired.FrameID != as[0].FrameID || d.Desired.AcknowledgedAt == nil {
+	if d.Battery != 88 || d.Humidity != 43 || d.Desired == nil || d.Desired.FrameID != as[0].FrameID || d.Desired.AcknowledgedAt == nil {
 		t.Fatalf("device=%+v", d)
 	}
 }

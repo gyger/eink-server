@@ -66,7 +66,8 @@ remain historical metadata but are never replayed ahead of a newer frame.
 
 The default database is `./data/eink.db`. It contains:
 
-- Device identity, name, first/last seen, dimensions, firmware, telemetry,
+- Device identity, name, first/last seen, dimensions, firmware, battery,
+  temperature, relative humidity,
   display-state ID, raw status fields, and image defaults.
 - Original uploaded image blobs.
 - Per-device assignments, settings snapshots, frame IDs, and delivery state.
