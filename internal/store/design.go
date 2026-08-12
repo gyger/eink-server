@@ -22,12 +22,13 @@ type Design struct {
 }
 
 type ActiveDesign struct {
-	DeviceUUID   string
-	DesignID     string
-	SVG          []byte
-	Dependencies []string
-	ValuesHash   string
-	PageID       string
+	DeviceUUID     string
+	DesignID       string
+	SVG            []byte
+	Dependencies   []string
+	ValuesHash     string
+	PageID         string
+	RefreshSeconds int
 }
 
 type InteractionMap struct {
@@ -121,17 +122,34 @@ func (s *Store) ClearActiveDesign(ctx context.Context, uuid string) error {
 func (s *Store) ActiveDesign(ctx context.Context, uuid string) (ActiveDesign, error) {
 	var d ActiveDesign
 	var deps string
-	err := s.DB.QueryRowContext(ctx, `SELECT device_uuid,design_id,svg,dependencies_json,values_hash,page_id FROM device_designs WHERE device_uuid=?`, uuid).Scan(&d.DeviceUUID, &d.DesignID, &d.SVG, &deps, &d.ValuesHash, &d.PageID)
+	err := s.DB.QueryRowContext(ctx, `SELECT device_uuid,design_id,svg,dependencies_json,values_hash,page_id,refresh_seconds FROM device_designs WHERE device_uuid=?`, uuid).Scan(&d.DeviceUUID, &d.DesignID, &d.SVG, &deps, &d.ValuesHash, &d.PageID, &d.RefreshSeconds)
 	if err == nil {
 		err = json.Unmarshal([]byte(deps), &d.Dependencies)
 	}
 	return d, err
 }
 
-func (s *Store) UpdateActiveDesignRender(ctx context.Context, uuid, hash, pageID string, deps []string) error {
+func (s *Store) UpdateActiveDesignRender(ctx context.Context, uuid, hash, pageID string, deps []string, refreshSeconds int) error {
 	raw, _ := json.Marshal(deps)
-	_, err := s.DB.ExecContext(ctx, `UPDATE device_designs SET dependencies_json=?,values_hash=?,page_id=?,updated_at=? WHERE device_uuid=?`, raw, hash, pageID, nowString(), uuid)
+	_, err := s.DB.ExecContext(ctx, `UPDATE device_designs SET dependencies_json=?,values_hash=?,page_id=?,refresh_seconds=?,updated_at=? WHERE device_uuid=?`, raw, hash, pageID, refreshSeconds, nowString(), uuid)
 	return err
+}
+
+func (s *Store) RefreshingDesignUUIDs(ctx context.Context) ([]string, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT device_uuid FROM device_designs WHERE refresh_seconds > 0 ORDER BY device_uuid`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var uuid string
+		if err := rows.Scan(&uuid); err != nil {
+			return nil, err
+		}
+		out = append(out, uuid)
+	}
+	return out, rows.Err()
 }
 
 func ValuesHash(values map[string]string, deps []string) string {

@@ -6,6 +6,8 @@ system_name = "EInk Server"
 design_directory = "./designs"
 default_design = "builtin:status"
 default_rendering = "eink"
+default_timezone = "Europe/Berlin"
+default_locale = "de-DE"
 font_directory = "./fonts"
 use_system_fonts = true
 

@@ -1,6 +1,9 @@
 package design
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRenderDynamicSVGAndMetadata(t *testing.T) {
 	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><rect width="100" height="50" fill="white"/><text x="5" y="15" data-value="${device.temperature} °C">--</text><rect x="10" y="20" width="30" height="20" fill="none" data-action="lights" data-region="button"/></svg>`)
@@ -13,6 +16,34 @@ func TestRenderDynamicSVGAndMetadata(t *testing.T) {
 	}
 	if len(out.Dependencies) != 1 || out.Dependencies[0] != "device.temperature" {
 		t.Fatalf("dependencies=%v", out.Dependencies)
+	}
+}
+
+func TestCalendarWidgetAndRefresh(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 600" data-refresh="1m"><g data-widget="calendar" data-x="0" data-y="0" data-width="700" data-height="600" data-week-start="monday" data-spillover="true"/></svg>`)
+	out, err := (Compiler{}).Render(svg, 700, 600, Values{"system.date": "2024-02-29", "system.locale": "de-DE"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Refresh.String() != "1m0s" || len(out.Dependencies) != 2 || out.Dependencies[0] != "system.date" || out.Dependencies[1] != "system.locale" {
+		t.Fatalf("output=%+v", out)
+	}
+	clean, _, err := compileXML(svg, 700, 600, Values{"system.date": "2024-02-29", "system.locale": "de-DE"})
+	if err != nil || !strings.Contains(string(clean), "Februar 2024") || strings.Count(string(clean), `calendar-day`) != 42 || !strings.Contains(string(clean), `class="calendar-day calendar-today-text" text-anchor="middle" font-size="25.80" fill="white"`) || !strings.Contains(string(clean), `class="calendar-day calendar-outside" text-anchor="middle" font-size="25.80" fill="#999999"`) || !strings.Contains(string(clean), `cy="462.23"`) {
+		t.Fatalf("calendar output invalid: err=%v xml=%s", err, clean)
+	}
+}
+
+func TestCalendarRejectsInvalidContract(t *testing.T) {
+	values := Values{"system.date": "2026-08-12", "system.locale": "de-DE"}
+	for _, svg := range []string{
+		`<svg viewBox="0 0 10 10" data-refresh="30s"><rect/></svg>`,
+		`<svg viewBox="0 0 10 10"><g data-widget="unknown"/></svg>`,
+		`<svg viewBox="0 0 10 10"><g data-widget="calendar" data-x="0" data-y="0" data-width="10" data-height="10"><rect/></g></svg>`,
+	} {
+		if _, err := (Compiler{}).Render([]byte(svg), 10, 10, values); err == nil {
+			t.Fatalf("invalid SVG accepted: %s", svg)
+		}
 	}
 }
 

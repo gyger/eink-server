@@ -19,17 +19,21 @@ import (
 type Store struct {
 	DB              *sql.DB
 	DefaultSettings imageproc.Settings
+	DefaultTimezone string
+	DefaultLocale   string
 }
 
 // SchemaVersion is the newest database schema understood by this binary.
-// Keep it at 1 until the first release; subsequent schema changes must add a
-// migration instead of changing an already released migration.
+// Keep this migration editable until the first release. After release, schema
+// changes must append a new numbered migration instead.
 const SchemaVersion = 1
 
 type Device struct {
 	UUID         string             `json:"uuid"`
 	Name         string             `json:"name"`
 	Location     string             `json:"location"`
+	Timezone     string             `json:"timezone"`
+	Locale       string             `json:"locale"`
 	FirstSeen    time.Time          `json:"first_seen"`
 	LastSeen     time.Time          `json:"last_seen"`
 	Battery      uint32             `json:"battery"`
@@ -76,7 +80,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{DB: db, DefaultSettings: imageproc.Defaults()}
+	s := &Store{DB: db, DefaultSettings: imageproc.Defaults(), DefaultTimezone: "Europe/Berlin", DefaultLocale: "de-DE"}
 	if err := s.migrate(context.Background()); err != nil {
 		db.Close()
 		return nil, err
@@ -129,7 +133,7 @@ func (s *Store) migrate(ctx context.Context) error {
 var schemaMigrations = map[int]string{
 	1: `
 CREATE TABLE IF NOT EXISTS devices (
- uuid TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
+ uuid TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', timezone TEXT NOT NULL DEFAULT '', locale TEXT NOT NULL DEFAULT '', first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
  battery INTEGER NOT NULL DEFAULT 0, temperature INTEGER NOT NULL DEFAULT 0, humidity INTEGER NOT NULL DEFAULT 0,
  width INTEGER NOT NULL DEFAULT 0,
  height INTEGER NOT NULL DEFAULT 0, firmware TEXT NOT NULL DEFAULT '', display_state INTEGER NOT NULL DEFAULT 0,
@@ -157,7 +161,7 @@ CREATE TABLE IF NOT EXISTS designs (
 );
 CREATE TABLE IF NOT EXISTS device_designs (
  device_uuid TEXT PRIMARY KEY REFERENCES devices(uuid), design_id TEXT NOT NULL, svg BLOB NOT NULL,
- dependencies_json TEXT NOT NULL DEFAULT '[]', values_hash TEXT NOT NULL DEFAULT '', page_id TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
+ dependencies_json TEXT NOT NULL DEFAULT '[]', values_hash TEXT NOT NULL DEFAULT '', page_id TEXT NOT NULL DEFAULT '', refresh_seconds INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS assignment_interactions (
  assignment_id INTEGER PRIMARY KEY REFERENCES assignments(id), design_id TEXT NOT NULL, page_id TEXT NOT NULL DEFAULT '', map_json TEXT NOT NULL
@@ -176,10 +180,10 @@ func (s *Store) UpsertStatus(ctx context.Context, st pv3.Status) (bool, error) {
 	now := nowString()
 	raw, _ := json.Marshal(st.Fields)
 	defaults := s.DefaultSettings.JSON()
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO devices(uuid,name,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,status_json,settings_json)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uuid) DO UPDATE SET last_seen=excluded.last_seen,battery=excluded.battery,
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO devices(uuid,name,timezone,locale,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,status_json,settings_json)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uuid) DO UPDATE SET last_seen=excluded.last_seen,battery=excluded.battery,
 temperature=excluded.temperature,humidity=excluded.humidity,width=excluded.width,height=excluded.height,firmware=excluded.firmware,display_state=excluded.display_state,status_json=excluded.status_json`,
-		st.UUID, "", now, now, st.Battery, st.Temperature, st.Humidity, st.Width, st.Height, st.Firmware, st.DisplayState, string(raw), defaults)
+		st.UUID, "", s.DefaultTimezone, s.DefaultLocale, now, now, st.Battery, st.Temperature, st.Humidity, st.Width, st.Height, st.Firmware, st.DisplayState, string(raw), defaults)
 	if err != nil {
 		return false, err
 	}
@@ -226,7 +230,7 @@ func (s *Store) sampleStatus(ctx context.Context, st pv3.Status, raw, now string
 }
 
 func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT uuid,name,location,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,settings_json FROM devices ORDER BY name,uuid`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT uuid,name,location,timezone,locale,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,settings_json FROM devices ORDER BY name,uuid`)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +261,7 @@ type scanner interface{ Scan(...any) error }
 func scanDevice(row scanner) (Device, error) {
 	var d Device
 	var first, last, settings string
-	err := row.Scan(&d.UUID, &d.Name, &d.Location, &first, &last, &d.Battery, &d.Temperature, &d.Humidity, &d.Width, &d.Height, &d.Firmware, &d.DisplayState, &settings)
+	err := row.Scan(&d.UUID, &d.Name, &d.Location, &d.Timezone, &d.Locale, &first, &last, &d.Battery, &d.Temperature, &d.Humidity, &d.Width, &d.Height, &d.Firmware, &d.DisplayState, &settings)
 	if err != nil {
 		return d, err
 	}
@@ -268,7 +272,7 @@ func scanDevice(row scanner) (Device, error) {
 }
 
 func (s *Store) GetDevice(ctx context.Context, uuid string) (Device, error) {
-	row := s.DB.QueryRowContext(ctx, `SELECT uuid,name,location,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,settings_json FROM devices WHERE uuid=?`, uuid)
+	row := s.DB.QueryRowContext(ctx, `SELECT uuid,name,location,timezone,locale,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,settings_json FROM devices WHERE uuid=?`, uuid)
 	d, err := scanDevice(row)
 	if err == nil {
 		d.Desired, _ = s.latestAssignment(ctx, uuid)
@@ -276,11 +280,17 @@ func (s *Store) GetDevice(ctx context.Context, uuid string) (Device, error) {
 	return d, err
 }
 
-func (s *Store) UpdateDevice(ctx context.Context, uuid, name, location string, settings imageproc.Settings) error {
+func (s *Store) UpdateDevice(ctx context.Context, uuid, name, location, timezone, locale string, settings imageproc.Settings) error {
 	if err := settings.Validate(); err != nil {
 		return err
 	}
-	res, err := s.DB.ExecContext(ctx, `UPDATE devices SET name=?,location=?,settings_json=? WHERE uuid=?`, name, location, settings.JSON(), uuid)
+	if _, err := time.LoadLocation(timezone); err != nil {
+		return errors.New("invalid IANA timezone")
+	}
+	if locale != "de-DE" && locale != "en-GB" {
+		return errors.New("locale must be de-DE or en-GB")
+	}
+	res, err := s.DB.ExecContext(ctx, `UPDATE devices SET name=?,location=?,timezone=?,locale=?,settings_json=? WHERE uuid=?`, name, location, timezone, locale, settings.JSON(), uuid)
 	if err == nil {
 		n, _ := res.RowsAffected()
 		if n == 0 {

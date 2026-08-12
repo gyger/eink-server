@@ -27,6 +27,8 @@ defaults, send the complete settings object:
 {
   "name": "Kitchen",
   "location": "Ground floor",
+  "timezone": "Europe/Berlin",
+  "locale": "de-DE",
   "image_defaults": {
     "fit": "contain",
     "background": "white",
@@ -100,7 +102,7 @@ Opens a Server-Sent Events stream. Event names currently include:
 
 - `device.connected`, `device.disconnected`, `device.enrolled`, `device.status`
 - `image.queued`, `image.sent`, `image.acknowledged`, `image.delivered`,
-  `image.failed`, `image.clear_sent`, `image.clear_acknowledged`
+  `image.failed`
 
 SVG touch and action events include `touch.tap`, `action.unresolved`,
 `action.started`, `action.succeeded`, and `action.failed`.

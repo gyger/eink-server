@@ -40,9 +40,15 @@ system_name = "EInk Server"
 design_directory = "./designs"
 default_design = "builtin:status"
 default_rendering = "eink"
+default_timezone = "Europe/Berlin"
+default_locale = "de-DE"
 font_directory = "./fonts"
 use_system_fonts = true
 ```
+
+`default_timezone` must be an IANA timezone name. `default_locale` currently
+accepts `de-DE` and `en-GB`. They are persisted when a tablet enrolls and may
+then be changed per tablet.
 
 An example file is included as `eink-server.example.toml`.
 
@@ -56,6 +62,8 @@ An example file is included as `eink-server.example.toml`.
 | `design_directory` | `./designs` | — | Optional directory scanned for top-level SVG designs. |
 | `default_design` | `builtin:status` | — | Design assigned when an unknown tablet first enrolls; set to an empty string to disable. |
 | `default_rendering` | `eink` | — | Image rendering mode assigned when a tablet first enrolls: `eink` or `smooth`. |
+| `default_timezone` | `Europe/Berlin` | — | IANA timezone assigned when a tablet first enrolls. |
+| `default_locale` | `de-DE` | — | Calendar locale assigned when a tablet first enrolls: `de-DE` or `en-GB`. |
 | `font_directory` | `./fonts` | — | Optional directory containing additional TTF, OTF, WOFF, or WOFF2 fonts. |
 | `use_system_fonts` | `true` | — | Include operating-system font directories after embedded and application fonts. |
 

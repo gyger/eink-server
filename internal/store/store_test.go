@@ -24,7 +24,7 @@ func TestPersistenceAndAssignment(t *testing.T) {
 	if err != nil || !isNew {
 		t.Fatalf("new=%v err=%v", isNew, err)
 	}
-	if err := s.UpdateDevice(ctx, st.UUID, "Conference display", "Meeting room", imageproc.Defaults()); err != nil {
+	if err := s.UpdateDevice(ctx, st.UUID, "Conference display", "Meeting room", "Europe/Berlin", "de-DE", imageproc.Defaults()); err != nil {
 		t.Fatal(err)
 	}
 	as, err := s.CreateAssignments(ctx, []string{st.UUID}, "image/png", tinyPNG(t), imageproc.Override{})

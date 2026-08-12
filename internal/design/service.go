@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"joantablet/server/internal/action"
@@ -23,6 +24,7 @@ import (
 var NamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 type Notifier interface{ Notify(string) }
+type Connections interface{ IsConnected(string) bool }
 
 type Service struct {
 	Store           *store.Store
@@ -30,28 +32,23 @@ type Service struct {
 	Log             *slog.Logger
 	Actions         *action.Runner
 	Notifier        Notifier
+	Connections     Connections
 	SystemName      string
 	DesignDirectory string
 	DefaultDesign   string
 	Compiler        Compiler
+	Now             func() time.Time
+	renderMu        sync.Map
 }
 
-const builtinStatus = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 758">
+const builtinStatus = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 758" data-refresh="1m">
 <rect width="1024" height="758" fill="white"/>
 <text x="250" y="405" text-anchor="middle" font-family="Noto Sans" font-size="154" font-weight="400" data-value="${system.time}">18:30</text>
 <line x1="500" y1="120" x2="500" y2="625" stroke="#b8b8b8" stroke-width="2"/>
+<style>.calendar-title{font-weight:500}.calendar-weekday{font-weight:600}.calendar-outside{fill:#999}.calendar-today{fill:#000}.calendar-today-text{fill:#fff}</style>
+<g data-widget="calendar" data-x="520" data-y="55" data-width="460" data-height="570" data-week-start="monday" data-spillover="true"/>
 <g font-family="Noto Sans" fill="black">
-  <text x="752" y="105" text-anchor="middle" font-size="45" font-weight="500">February 2026</text>
-  <g text-anchor="middle" font-size="21" font-weight="600"><text x="556" y="165">M</text><text x="621" y="165">T</text><text x="686" y="165">W</text><text x="751" y="165">T</text><text x="816" y="165">F</text><text x="881" y="165">S</text><text x="946" y="165">S</text></g>
-  <g text-anchor="middle" font-size="27">
-    <text x="946" y="220">1</text>
-    <text x="556" y="280">2</text><text x="621" y="280">3</text><text x="686" y="280">4</text><text x="751" y="280">5</text><text x="816" y="280">6</text><text x="881" y="280">7</text><text x="946" y="280">8</text>
-    <text x="556" y="340">9</text><text x="621" y="340">10</text><text x="686" y="340">11</text><circle cx="751" cy="331" r="25" fill="black"/><text x="751" y="340" fill="white">12</text><text x="816" y="340">13</text><text x="881" y="340">14</text><text x="946" y="340">15</text>
-    <text x="556" y="400">16</text><text x="621" y="400">17</text><text x="686" y="400">18</text><text x="751" y="400">19</text><text x="816" y="400">20</text><text x="881" y="400">21</text><text x="946" y="400">22</text>
-    <text x="556" y="460">23</text><text x="621" y="460">24</text><text x="686" y="460">25</text><text x="751" y="460">26</text><text x="816" y="460">27</text><text x="881" y="460">28</text>
-  </g>
   <text x="45" y="710" font-size="24" font-weight="600" data-value="${device.location}">Location</text>
-  <text x="260" y="710" font-size="21" font-weight="500" fill="#777777" data-value="· Updated ${system.time}">· Updated 18:30</text>
   <text x="979" y="710" text-anchor="end" font-size="21" font-weight="500" data-value="${device.name} ${device.temperature} °C · Batt ${device.battery}%">Room 20 °C · Batt 98%</text>
 </g>
 </svg>`
@@ -119,15 +116,31 @@ func (s *Service) validate(source []byte) error {
 }
 
 func sampleValues(system string) Values {
-	return Values{"system.name": system, "system.time": "18:30", "device.name": "Tablet", "device.location": "Location", "device.uuid": "00000000-0000-0000-0000-000000000000", "device.battery": "100", "device.temperature": "23", "device.humidity": "42", "device.width": "1024", "device.height": "758", "device.firmware": "0.0.0", "device.display_state": "0"}
+	return Values{"system.name": system, "system.time": "18:30", "system.date": "2026-02-12", "system.locale": "de-DE", "device.name": "Tablet", "device.location": "Location", "device.uuid": "00000000-0000-0000-0000-000000000000", "device.battery": "100", "device.temperature": "23", "device.humidity": "42", "device.width": "1024", "device.height": "758", "device.firmware": "0.0.0", "device.display_state": "0"}
 }
 
 func (s *Service) Values(d store.Device) Values {
+	return s.valuesAt(d, s.now())
+}
+
+func (s *Service) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
+}
+
+func (s *Service) valuesAt(d store.Device, now time.Time) Values {
 	name := d.Name
 	if name == "" {
 		name = d.UUID[:12]
 	}
-	return Values{"system.name": s.SystemName, "system.time": time.Now().Format("15:04"), "device.name": name, "device.location": d.Location, "device.uuid": d.UUID, "device.battery": strconv.FormatUint(uint64(d.Battery), 10), "device.temperature": strconv.FormatInt(int64(d.Temperature), 10), "device.humidity": strconv.FormatUint(uint64(d.Humidity), 10), "device.width": strconv.FormatUint(uint64(d.Width), 10), "device.height": strconv.FormatUint(uint64(d.Height), 10), "device.firmware": d.Firmware, "device.display_state": strconv.FormatUint(uint64(d.DisplayState), 10)}
+	zone, err := time.LoadLocation(d.Timezone)
+	if err != nil {
+		zone = time.UTC
+	}
+	local := now.In(zone)
+	return Values{"system.name": s.SystemName, "system.time": local.Format("15:04"), "system.date": local.Format("2006-01-02"), "system.locale": d.Locale, "device.name": name, "device.location": d.Location, "device.uuid": d.UUID, "device.battery": strconv.FormatUint(uint64(d.Battery), 10), "device.temperature": strconv.FormatInt(int64(d.Temperature), 10), "device.humidity": strconv.FormatUint(uint64(d.Humidity), 10), "device.width": strconv.FormatUint(uint64(d.Width), 10), "device.height": strconv.FormatUint(uint64(d.Height), 10), "device.firmware": d.Firmware, "device.display_state": strconv.FormatUint(uint64(d.DisplayState), 10)}
 }
 
 func (s *Service) Designs(ctx context.Context) ([]store.Design, error) { return s.Store.Designs(ctx) }
@@ -173,6 +186,10 @@ func (s *Service) Clear(ctx context.Context, uuid string) error {
 }
 
 func (s *Service) Render(ctx context.Context, uuid string, force bool) (store.Assignment, error) {
+	lockValue, _ := s.renderMu.LoadOrStore(uuid, &sync.Mutex{})
+	lock := lockValue.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
 	active, err := s.Store.ActiveDesign(ctx, uuid)
 	if err != nil {
 		return store.Assignment{}, err
@@ -198,7 +215,7 @@ func (s *Service) Render(ctx context.Context, uuid string, force bool) (store.As
 	if err != nil {
 		return store.Assignment{}, err
 	}
-	if err := s.Store.UpdateActiveDesignRender(ctx, uuid, hash, out.PageID, out.Dependencies); err != nil {
+	if err := s.Store.UpdateActiveDesignRender(ctx, uuid, hash, out.PageID, out.Dependencies, int(out.Refresh/time.Second)); err != nil {
 		return store.Assignment{}, err
 	}
 	s.emit(ctx, uuid, "design.rendered", map[string]any{"design_id": active.DesignID, "page_id": out.PageID, "assignment_id": assignment.ID, "frame_id": assignment.FrameID})
@@ -207,6 +224,37 @@ func (s *Service) Render(ctx context.Context, uuid string, force bool) (store.As
 		s.Notifier.Notify(uuid)
 	}
 	return assignment, nil
+}
+
+func (s *Service) RunScheduler(ctx context.Context) {
+	for {
+		now := s.now()
+		next := now.Truncate(time.Minute).Add(time.Minute)
+		timer := time.NewTimer(time.Until(next))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		uuids, err := s.Store.RefreshingDesignUUIDs(ctx)
+		if err != nil {
+			s.Log.Warn("loading refreshing designs", "error", err)
+			continue
+		}
+		for _, uuid := range uuids {
+			if s.Connections != nil && !s.Connections.IsConnected(uuid) {
+				continue
+			}
+			active, err := s.Store.ActiveDesign(ctx, uuid)
+			if err != nil || active.RefreshSeconds <= 0 || next.Unix()%int64(active.RefreshSeconds) != 0 {
+				continue
+			}
+			if _, err := s.Render(ctx, uuid, false); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				s.Log.Warn("scheduled design render", "uuid", uuid, "error", err)
+			}
+		}
+	}
 }
 
 func (s *Service) StatusChanged(ctx context.Context, uuid string) {

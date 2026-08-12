@@ -112,6 +112,8 @@ func (a *API) patchDevice(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name          *string             `json:"name"`
 		Location      *string             `json:"location"`
+		Timezone      *string             `json:"timezone"`
+		Locale        *string             `json:"locale"`
 		ImageDefaults *imageproc.Settings `json:"image_defaults"`
 	}
 	if err := decodeJSON(w, r, &req); err != nil {
@@ -123,10 +125,16 @@ func (a *API) patchDevice(w http.ResponseWriter, r *http.Request) {
 	if req.Location != nil {
 		d.Location = *req.Location
 	}
+	if req.Timezone != nil {
+		d.Timezone = *req.Timezone
+	}
+	if req.Locale != nil {
+		d.Locale = *req.Locale
+	}
 	if req.ImageDefaults != nil {
 		d.Settings = *req.ImageDefaults
 	}
-	if err := a.Store.UpdateDevice(r.Context(), uuid, d.Name, d.Location, d.Settings); err != nil {
+	if err := a.Store.UpdateDevice(r.Context(), uuid, d.Name, d.Location, d.Timezone, d.Locale, d.Settings); err != nil {
 		problem(w, 400, "invalid_device", err.Error())
 		return
 	}

@@ -25,12 +25,30 @@ rendering while leaving useful placeholder text for an SVG editor:
 </svg>
 ```
 
-Supported variables are `system.name`, `device.name`, `device.uuid`,
-`system.time`, `device.location`, `device.battery`, `device.temperature`,
+Supported variables are `system.name`, `system.time`, `system.date`,
+`system.locale`, `device.name`, `device.uuid`, `device.location`, `device.battery`, `device.temperature`,
 `device.humidity`, `device.width`, `device.height`, `device.firmware`, and
 `device.display_state`. `system.time` is the server-local time in `HH:MM`
-format. Unknown values reject the design. A new frame is queued only when a
+format in the tablet's configured IANA timezone; `system.date` uses
+`YYYY-MM-DD`. Unknown values reject the design. A new frame is queued only when a
 value actually referenced by the active design changes.
+
+## Calendar widget
+
+The native calendar provider expands an empty `g` element into a localized
+six-week month grid:
+
+```svg
+<g data-widget="calendar"
+   data-x="520" data-y="55" data-width="460" data-height="570"
+   data-week-start="monday" data-spillover="true"/>
+```
+
+The four geometry attributes are required. Week start is `monday` or `sunday`;
+spillover is `true` or `false`. The provider emits `calendar-title`,
+`calendar-weekday`, `calendar-day`, `calendar-outside`, `calendar-today`, and
+`calendar-today-text` classes for styling. Calendar widgets depend on the
+tablet-local date and locale, not on the clock text.
 
 ## Fonts
 
@@ -104,11 +122,11 @@ Top-level groups may use `data-page="name"`. Shared root content and the first
 page are rendered in this release; later pages are retained as valid SVG but
 not displayed. Page navigation is reserved for a future action type.
 
-Periodic refresh is not implemented yet. The planned contract lets the root
-SVG request an interval such as `data-refresh="1m"`; designs without a refresh
-declaration continue to render only when referenced values or settings change.
-The server will enforce a safe minimum and suppress unchanged frames, so the
-declared interval will be a scheduling hint rather than a guarantee.
+A root SVG may request a whole-minute refresh interval from `1m` through `24h`,
+for example `data-refresh="1m"`. The scheduler aligns work to interval
+boundaries and renders connected tablets only. Dependency hashing suppresses
+unchanged frames; reconnect and status handling render current values
+immediately. Designs without the attribute remain event-driven.
 
 ## Security and limits
 

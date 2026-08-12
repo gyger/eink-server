@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/tdewolff/canvas"
 	"github.com/tdewolff/canvas/renderers/rasterizer"
@@ -40,11 +41,12 @@ type Rect struct {
 }
 
 type Output struct {
-	PNG          []byte   `json:"-"`
-	Actions      []Rect   `json:"actions"`
-	Regions      []Rect   `json:"regions"`
-	Dependencies []string `json:"dependencies"`
-	PageID       string   `json:"page_id"`
+	PNG          []byte        `json:"-"`
+	Actions      []Rect        `json:"actions"`
+	Regions      []Rect        `json:"regions"`
+	Dependencies []string      `json:"dependencies"`
+	PageID       string        `json:"page_id"`
+	Refresh      time.Duration `json:"refresh"`
 }
 
 type Compiler struct{}
@@ -127,6 +129,7 @@ type state struct {
 	matrix  matrix
 	skip    bool
 	dynamic bool
+	widget  bool
 	name    string
 }
 
@@ -161,7 +164,7 @@ func compileXML(source []byte, width, height int, values Values) ([]byte, Output
 			t.Attr = normalizeFontAttrs(t.Attr)
 			attrs := attrsMap(t.Attr)
 			if parent.dynamic {
-				return nil, out, errors.New("data-value text must not contain child elements")
+				return nil, out, errors.New("dynamic elements must not contain child elements")
 			}
 			child := state{matrix: parent.matrix, skip: parent.skip, name: name}
 			if page := attrs["data-page"]; page != "" && !parent.skip {
@@ -194,6 +197,13 @@ func compileXML(source []byte, width, height int, values Values) ([]byte, Output
 				if attrs["font-family"] == "" {
 					t.Attr = setAttr(t.Attr, "font-family", "Noto Sans")
 				}
+				if refresh := attrs["data-refresh"]; refresh != "" {
+					d, err := time.ParseDuration(refresh)
+					if err != nil || d < time.Minute || d > 24*time.Hour || d%time.Minute != 0 {
+						return nil, out, errors.New("data-refresh must be a whole-minute duration from 1m through 24h")
+					}
+					out.Refresh = d
+				}
 			}
 			if err := validateAttrs(t.Attr); err != nil {
 				return nil, out, err
@@ -211,6 +221,17 @@ func compileXML(source []byte, width, height int, values Values) ([]byte, Output
 				}
 				attrs["_dynamic_text"] = replaced
 				child.dynamic = true
+			}
+			if widget := attrs["data-widget"]; widget != "" {
+				if name != "g" {
+					return nil, out, errors.New("data-widget is only supported on g elements")
+				}
+				if widget != "calendar" {
+					return nil, out, fmt.Errorf("unknown widget %q", widget)
+				}
+				child.dynamic, child.widget = true, true
+				deps["system.date"] = struct{}{}
+				deps["system.locale"] = struct{}{}
 			}
 			if !child.skip && rootSeen && (attrs["data-action"] != "" || attrs["data-region"] != "") {
 				r, err := elementRect(name, attrs)
@@ -234,7 +255,11 @@ func compileXML(source []byte, width, height int, values Values) ([]byte, Output
 					return nil, out, err
 				}
 				if child.dynamic {
-					if err := enc.EncodeToken(xml.CharData(attrs["_dynamic_text"])); err != nil {
+					if child.widget {
+						if err := emitCalendar(enc, attrs, values); err != nil {
+							return nil, out, err
+						}
+					} else if err := enc.EncodeToken(xml.CharData(attrs["_dynamic_text"])); err != nil {
 						return nil, out, err
 					}
 				}

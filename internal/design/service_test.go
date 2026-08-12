@@ -94,6 +94,16 @@ func TestDynamicRenderAndFrameCorrelatedAction(t *testing.T) {
 	}
 }
 
+func TestValuesUseDeviceTimezoneAcrossDST(t *testing.T) {
+	service := &Service{SystemName: "Test"}
+	device := store.Device{UUID: "00112233-4455-6677-8899-aabbccddeeff", Timezone: "Europe/Berlin", Locale: "de-DE"}
+	before := service.valuesAt(device, time.Date(2026, 3, 29, 0, 59, 0, 0, time.UTC))
+	after := service.valuesAt(device, time.Date(2026, 3, 29, 1, 1, 0, 0, time.UTC))
+	if before["system.time"] != "01:59" || after["system.time"] != "03:01" || after["system.date"] != "2026-03-29" || after["system.locale"] != "de-DE" {
+		t.Fatalf("before=%v after=%v", before, after)
+	}
+}
+
 func jsonDecoder(r io.Reader, dst any) error {
 	return json.NewDecoder(r).Decode(dst)
 }

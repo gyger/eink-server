@@ -29,7 +29,7 @@ func TestEmptyConfigUsesDefaults(t *testing.T) {
 }
 
 func TestConfigOverlaysDefaults(t *testing.T) {
-	path := writeConfig(t, "http_listen = \"127.0.0.1:9090\"\nlog_format = \"json\"\ndefault_rendering = \"smooth\"\n")
+	path := writeConfig(t, "http_listen = \"127.0.0.1:9090\"\nlog_format = \"json\"\ndefault_rendering = \"smooth\"\ndefault_timezone = \"Europe/Berlin\"\ndefault_locale = \"de-DE\"\n")
 	got, err := Load(path, true)
 	if err != nil {
 		t.Fatal(err)

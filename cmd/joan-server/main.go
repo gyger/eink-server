@@ -79,6 +79,8 @@ func main() {
 	defaultSettings := imageproc.Defaults()
 	defaultSettings.Rendering = cfg.DefaultRendering
 	db.DefaultSettings = defaultSettings
+	db.DefaultTimezone = cfg.DefaultTimezone
+	db.DefaultLocale = cfg.DefaultLocale
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	hub := events.New()
@@ -96,11 +98,12 @@ func main() {
 		fatal(log, "loading configured actions", err)
 	}
 	runner := action.New(ctx, db, hub, log)
-	designs := &design.Service{Store: db, Hub: hub, Log: log, Actions: runner, Notifier: gw, SystemName: cfg.SystemName, DesignDirectory: cfg.DesignDirectory, DefaultDesign: cfg.DefaultDesign}
+	designs := &design.Service{Store: db, Hub: hub, Log: log, Actions: runner, Notifier: gw, Connections: gw, SystemName: cfg.SystemName, DesignDirectory: cfg.DesignDirectory, DefaultDesign: cfg.DefaultDesign}
 	if err := designs.Init(ctx); err != nil {
 		fatal(log, "loading designs", err)
 	}
 	gw.Designs = designs
+	go designs.RunScheduler(ctx)
 	api := &httpapi.API{Store: db, Hub: hub, Connections: gw, Designs: designs, Log: log}
 	httpServer := &http.Server{Addr: *httpAddr, Handler: api.Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
 	errs := make(chan error, 2)

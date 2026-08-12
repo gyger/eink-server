@@ -35,6 +35,7 @@ With no configuration file or flags, the defaults are:
 - `:8080` — web UI and REST API
 - `./data/eink.db` — SQLite state
 - `eink` — default rendering mode for newly enrolled tablets
+- `Europe/Berlin` and `de-DE` — default tablet timezone and calendar locale
 
 At startup, the server looks for `eink-server.toml` beside its executable. A
 missing or empty file uses all defaults. Use `--config /path/to/config.toml` to
@@ -105,4 +106,4 @@ from USB (USB changes its normal display-transfer behavior):
 WASM widgets, multi-page navigation, general multi-rectangle/waveform control,
 URL rendering, encryption, bootloader/firmware updates, and verified
 larger-device support are future work. Current delivery can update one changed
-bounding rectangle with a white precursor.
+bounding rectangle per frame.

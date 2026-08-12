@@ -50,9 +50,8 @@ PV3 listener.
    The shipped `eink` mode uses native-resolution SVG output, edge-aware
    antialias suppression, and the recovered VSS grayscale range mapping;
    `smooth` retains 3× supersampling and ordinary grayscale quantization.
-7. The gateway sends a white intermediate update for the changed rectangle,
-   waits for its type-1 acknowledgement, and then sends the final rectangle
-   with the next sequence. The first update after a connection is full-screen.
+7. The gateway sends the changed rectangle as one logical image. The first
+   update after a connection is full-screen.
 8. The assignment becomes `sent`. An immediate type-1 reply records
    `acknowledged_at`; a later tablet status that echoes the frame ID changes it
    to `delivered`.
@@ -67,6 +66,8 @@ remain historical metadata but are never replayed ahead of a newer frame.
   (`builtin:status` by default).
 - A newly enrolled device snapshots the configured `default_rendering`
   (`eink` by default); later changes are per-device and persisted in SQLite.
+- It also snapshots `default_timezone` and `default_locale`. The design
+  scheduler rerenders connected periodic designs on aligned minute boundaries.
 - There is at most one active session per UUID. A newer connection closes and
   replaces the older one.
 - Each session serializes writes so heartbeat replies and image messages cannot

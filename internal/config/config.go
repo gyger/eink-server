@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/BurntSushi/toml"
 )
@@ -26,6 +27,8 @@ type Config struct {
 	DesignDirectory  string                  `toml:"design_directory"`
 	DefaultDesign    string                  `toml:"default_design"`
 	DefaultRendering string                  `toml:"default_rendering"`
+	DefaultTimezone  string                  `toml:"default_timezone"`
+	DefaultLocale    string                  `toml:"default_locale"`
 	FontDirectory    string                  `toml:"font_directory"`
 	UseSystemFonts   bool                    `toml:"use_system_fonts"`
 	Actions          map[string]ActionConfig `toml:"actions"`
@@ -48,6 +51,8 @@ func Defaults() Config {
 		DesignDirectory:  "./designs",
 		DefaultDesign:    "builtin:status",
 		DefaultRendering: "eink",
+		DefaultTimezone:  "Europe/Berlin",
+		DefaultLocale:    "de-DE",
 		FontDirectory:    "./fonts",
 		UseSystemFonts:   true,
 		Actions:          map[string]ActionConfig{},
@@ -116,6 +121,12 @@ func (c Config) Validate() error {
 	}
 	if c.DefaultRendering != "eink" && c.DefaultRendering != "smooth" {
 		return errors.New("default_rendering must be eink or smooth")
+	}
+	if _, err := time.LoadLocation(c.DefaultTimezone); err != nil {
+		return fmt.Errorf("default_timezone is not a valid IANA timezone: %w", err)
+	}
+	if c.DefaultLocale != "de-DE" && c.DefaultLocale != "en-GB" {
+		return errors.New("default_locale must be de-DE or en-GB")
 	}
 	namePattern := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 	for name, action := range c.Actions {
