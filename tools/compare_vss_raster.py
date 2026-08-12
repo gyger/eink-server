@@ -80,7 +80,9 @@ def suppress_antialias(source: list[int], width: int, height: int) -> list[int]:
 def packed(pixels: list[int]) -> bytes:
     if len(pixels) % 2:
         raise ValueError("packed 4-bit comparison requires an even pixel count")
-    return bytes((pixels[i] // LEVEL) << 4 | pixels[i + 1] // LEVEL for i in range(0, len(pixels), 2))
+    # PV3 Encoding 4 stores the left pixel in the low nibble and the right
+    # pixel in the high nibble.
+    return bytes((pixels[i + 1] // LEVEL) << 4 | pixels[i] // LEVEL for i in range(0, len(pixels), 2))
 
 
 def metrics(candidate: list[int], reference: list[int]) -> dict[str, int | float]:
