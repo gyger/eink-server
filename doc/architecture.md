@@ -47,9 +47,9 @@ PV3 listener.
 6. SVG dynamic values and interaction regions are resolved before the normal
    image renderer produces a device-sized grayscale preview and packed 4-bit
    pixels. The PV3 layer wraps and LZ4-compresses the frame.
-   The shipped `eink` mode uses native-resolution SVG output, edge-aware
-   antialias suppression, and the recovered VSS grayscale range mapping;
-   `smooth` retains 3× supersampling and ordinary grayscale quantization.
+   The shipped `eink` mode uses native-resolution SVG output and the recovered
+   VSS grayscale range mapping; `smooth` retains 3× supersampling and ordinary
+   grayscale quantization.
 7. The gateway sends the changed rectangle as one logical image. The first
    update after a connection is full-screen.
 8. The assignment becomes `sent`. An immediate type-1 reply records

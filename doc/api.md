@@ -69,9 +69,9 @@ Both upload routes accept optional query overrides:
 
 Uploads are limited to 20 MiB and decoded images to 20 megapixels. `exact`
 rejects a source whose post-rotation dimensions differ from the display.
-`eink` uses native-resolution SVG rendering, hardens high-contrast edge
-coverage, and applies the recovered VSS grayscale range preparation. `smooth`
-retains 3× SVG supersampling and ordinary grayscale quantization.
+`eink` uses native-resolution SVG rendering and applies the recovered VSS
+grayscale range preparation. `smooth` retains 3× SVG supersampling and ordinary
+grayscale quantization.
 The configured `default_rendering` supplies this setting only when a tablet
 first enrolls. Changing it does not overwrite enrolled tablets. Query
 overrides apply to PNG/JPEG uploads; select the SVG rendering mode through the

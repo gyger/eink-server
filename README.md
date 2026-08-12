@@ -87,9 +87,9 @@ curl -X PUT -H 'Content-Type: image/svg+xml' \
 Image options are `fit=contain|cover|stretch|exact`,
 `background=white|black`, `rotation=0|90|180|270`, `invert=true|false`,
 `dither=none|floyd-steinberg`, and `rendering=eink|smooth`. The default `eink`
-mode renders SVGs at native resolution, suppresses high-contrast antialiased
-edges, and applies the recovered VSS grayscale preparation. Use `smooth` for
-photographs or designs where ordinary antialiasing is preferred. Per-device
+mode renders SVGs at native resolution and applies the recovered VSS grayscale
+preparation. Use `smooth` for photographs or designs where ordinary
+antialiasing is preferred. Per-device
 defaults can be changed with
 `PATCH /api/v1/devices/{uuid}` or the web interface.
 

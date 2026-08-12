@@ -58,8 +58,8 @@ python3 tools/compare_vss_raster.py SOURCE.png VSS_REFERENCE.png \
   --output /tmp/vss-comparison
 ```
 
-The report ranks orientation, gamma, recovered native-VSS, and crisp-edge
-candidates. `--assert-exact` exits unsuccessfully unless packed bytes match.
+The report ranks orientation, gamma, and recovered native-VSS candidates.
+`--assert-exact` exits unsuccessfully unless packed bytes match.
 
 ## Adding protocol support
 

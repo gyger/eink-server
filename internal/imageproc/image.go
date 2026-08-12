@@ -162,7 +162,6 @@ func Process(src image.Image, width, height int, settings Settings) ([]byte, []b
 		}
 	}
 	if settings.Rendering == "eink" {
-		suppressAntialias(gray)
 		vssBeautify(gray, 1.1)
 	}
 	if settings.Dither == "floyd-steinberg" {
@@ -277,35 +276,6 @@ func sampleGray(src image.Image, b image.Rectangle, x, y float64) uint8 {
 func quantize(img *image.Gray) {
 	for i, v := range img.Pix {
 		img.Pix[i] = uint8(math.Round(float64(v)/17)) * 17
-	}
-}
-
-// suppressAntialias hardens only pixels on high-contrast edges. Uniform gray
-// fields and low-contrast photographic detail are left alone.
-func suppressAntialias(img *image.Gray) {
-	source := append([]byte(nil), img.Pix...)
-	w, h := img.Bounds().Dx(), img.Bounds().Dy()
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			lo, hi := uint8(255), uint8(0)
-			for dy := -1; dy <= 1; dy++ {
-				yy := min(max(y+dy, 0), h-1)
-				for dx := -1; dx <= 1; dx++ {
-					xx := min(max(x+dx, 0), w-1)
-					v := source[yy*img.Stride+xx]
-					lo, hi = min(lo, v), max(hi, v)
-				}
-			}
-			if int(hi)-int(lo) < 128 {
-				continue
-			}
-			v := source[y*img.Stride+x]
-			if int(v)-int(lo) <= int(hi)-int(v) {
-				img.Pix[y*img.Stride+x] = lo
-			} else {
-				img.Pix[y*img.Stride+x] = hi
-			}
-		}
 	}
 }
 

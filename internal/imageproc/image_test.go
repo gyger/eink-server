@@ -64,18 +64,6 @@ func TestSettingsValidation(t *testing.T) {
 	}
 }
 
-func TestSuppressAntialiasPreservesFieldsAndHardensEdges(t *testing.T) {
-	img := image.NewGray(image.Rect(0, 0, 5, 1))
-	copy(img.Pix, []byte{85, 85, 0, 100, 255})
-	suppressAntialias(img)
-	if img.Pix[0] != 85 || img.Pix[1] != 85 {
-		t.Fatalf("uniform gray field changed: %v", img.Pix)
-	}
-	if img.Pix[3] != 0 {
-		t.Fatalf("antialiased edge was not hardened: %v", img.Pix)
-	}
-}
-
 func TestVSSBeautifyExpandsFourBitRange(t *testing.T) {
 	img := image.NewGray(image.Rect(0, 0, 3, 1))
 	copy(img.Pix, []byte{0, 102, 255})

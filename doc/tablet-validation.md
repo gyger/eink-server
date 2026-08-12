@@ -45,8 +45,8 @@ application status record.
 7. With multiple tablets, verify per-device images remain independent and a
    broadcast creates one assignment per device.
 8. Compare `eink` and `smooth` on small text and thin lines. `eink` should use
-   native-resolution SVG rendering and harder high-contrast edges; `smooth`
-   should retain visibly softer 3× supersampling.
+   native-resolution SVG rendering; `smooth` should retain visibly softer 3×
+   supersampling.
 
 The verified Joan 6 needs a built-in 180-degree native framebuffer correction.
 Leave the image setting at `rotation=0` for normally oriented source images. The

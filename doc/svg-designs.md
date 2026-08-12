@@ -5,10 +5,9 @@ uploaded directly to a device, stored for reuse in SQLite, loaded from the
 configured design directory, or selected from the built-in designs.
 
 SVG designs use the tablet's `rendering` image setting. The shipped `eink`
-mode renders at native panel resolution and suppresses antialias coverage at
-high-contrast edges before four-bit conversion. Select `smooth` for the older
-3× supersampled output. Whole-pixel coordinates and strokes give the most
-predictable E Ink result.
+mode renders at native panel resolution before four-bit conversion. Select
+`smooth` for 3× supersampled output. Whole-pixel coordinates and strokes give
+the most predictable E Ink result.
 `default_rendering` chooses the value stored when a tablet first enrolls; it
 does not retroactively overwrite existing per-tablet settings.
 

@@ -150,10 +150,10 @@ Conversely, replaying VSS's exact full-screen packed pixels through this Go
 framing produced the same flawless physical result as VSS. A later structured
 probe established that the apparent graphics defect was reversed nibble order:
 VSS stores the left pixel in the low nibble and the right pixel in the high
-nibble. The Go packer now follows that order. The server defaults to a selectable `eink` preparation
-mode that uses native-resolution SVG rendering, hardens high-contrast edge
-coverage, and reproduces the recovered VSS grayscale range mapping. The older
-3× supersampled path remains available as `smooth`. This improves the captured
+nibble. The Go packer now follows that order. The server defaults to a
+selectable `eink` preparation mode that uses native-resolution SVG rendering
+and reproduces the recovered VSS grayscale range mapping. The 3× supersampled
+path remains available as `smooth`. This improves the captured
 reference comparison but is not yet byte-identical to VSS's WebKit raster, so
 physical acceptance remains required.
 
