@@ -79,6 +79,10 @@ func TestNativeImageUpload(t *testing.T) {
 func TestDeviceAndLegacyShapes(t *testing.T) {
 	api, s, _ := testAPI(t)
 	uuid := "00112233-4455-6677-8899-aabbccddeeff"
+	statusDesign, err := s.GetDesign(context.Background(), "builtin:status")
+	if err != nil || s.SetActiveDesign(context.Background(), uuid, statusDesign.ID, statusDesign.SVG) != nil {
+		t.Fatalf("activate status design: %v", err)
+	}
 	patch := httptest.NewRequest(http.MethodPatch, "/api/v1/devices/"+uuid, bytes.NewBufferString(`{"location":"Meeting room"}`))
 	patch.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -99,8 +103,8 @@ func TestDeviceAndLegacyShapes(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil || len(items) != 1 {
 			t.Fatalf("%s body=%s err=%v", path, w.Body.String(), err)
 		}
-		if path == "/api/v1/devices" && items[0]["humidity"] != float64(41) {
-			t.Fatalf("%s humidity=%v", path, items[0]["humidity"])
+		if path == "/api/v1/devices" && (items[0]["humidity"] != float64(41) || items[0]["active_design_id"] != "builtin:status") {
+			t.Fatalf("%s device=%v", path, items[0])
 		}
 	}
 	w = httptest.NewRecorder()

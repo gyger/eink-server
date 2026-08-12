@@ -68,13 +68,18 @@ func (a *API) health(w http.ResponseWriter, r *http.Request) {
 
 type deviceView struct {
 	store.Device
-	Connected bool `json:"connected"`
-	Online    bool `json:"online"`
+	Connected      bool   `json:"connected"`
+	Online         bool   `json:"online"`
+	ActiveDesignID string `json:"active_design_id,omitempty"`
 }
 
-func (a *API) view(d store.Device) deviceView {
+func (a *API) view(ctx context.Context, d store.Device) deviceView {
 	connected := a.Connections.IsConnected(d.UUID)
-	return deviceView{Device: d, Connected: connected, Online: connected || time.Since(d.LastSeen) < 7*time.Minute}
+	view := deviceView{Device: d, Connected: connected, Online: connected || time.Since(d.LastSeen) < 7*time.Minute}
+	if active, err := a.Store.ActiveDesign(ctx, d.UUID); err == nil {
+		view.ActiveDesignID = active.DesignID
+	}
+	return view
 }
 
 func (a *API) devices(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +90,7 @@ func (a *API) devices(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]deviceView, 0, len(items))
 	for _, d := range items {
-		out = append(out, a.view(d))
+		out = append(out, a.view(r.Context(), d))
 	}
 	writeJSON(w, 200, out)
 }
@@ -99,7 +104,7 @@ func (a *API) device(w http.ResponseWriter, r *http.Request) {
 		problem(w, 500, "storage_error", err.Error())
 		return
 	}
-	writeJSON(w, 200, a.view(d))
+	writeJSON(w, 200, a.view(r.Context(), d))
 }
 
 func (a *API) patchDevice(w http.ResponseWriter, r *http.Request) {

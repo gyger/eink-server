@@ -11,7 +11,8 @@ The default base URL is `http://SERVER:8080`. Native errors use this shape:
 ### `GET /api/v1/devices`
 
 Lists enrolled devices, current status, connection state, image defaults, and
-the latest desired assignment. Telemetry includes battery percentage,
+the latest desired assignment. `active_design_id` identifies the currently
+active dynamic SVG design when present. Telemetry includes battery percentage,
 temperature in degrees Celsius, and relative-humidity percentage.
 
 ### `GET /api/v1/devices/{uuid}`
