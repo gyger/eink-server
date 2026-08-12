@@ -5,6 +5,9 @@
 - The server and tablet are on the same trusted LAN.
 - The tablet is configured to connect to the server's LAN IP on TCP port 11113.
 - The host firewall permits inbound TCP 11113 and HTTP 8080 as appropriate.
+- TCP 11113 is mandatory in the firewall zone attached to the tablet-facing
+  network. TCP 8080 is optional unless the management UI must be reached from
+  another host.
 - For normal image transfer, disconnect the tablet's USB/FTDI data cable after
   configuration. Captures show that USB attachment changes display behavior.
 

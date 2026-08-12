@@ -178,7 +178,10 @@ func Process(src image.Image, width, height int, settings Settings) ([]byte, []b
 			if x+1 < width {
 				b = gray.GrayAt(x+1, y).Y / 17
 			}
-			packed[(y*width+x)/2] = a<<4 | b
+			// PV3 encoding 4 stores the left pixel in the low nibble and the
+			// right pixel in the high nibble. This order was verified against
+			// an official VSS 7.6.5 structured impulse capture.
+			packed[(y*width+x)/2] = b<<4 | a
 		}
 	}
 	var preview bytes.Buffer

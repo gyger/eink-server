@@ -27,6 +27,7 @@ __pycache__/
 
 # Local configuration and secrets
 /eink-server.toml
+/.vss-local-credentials
 .env
 .env.*
 !.env.example

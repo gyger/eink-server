@@ -42,9 +42,8 @@ Known:
 - VSS has sent three ordered, overlapping rectangles in one logical image;
   later primitives overwrite earlier ones. Odd-width rectangles are packed
   continuously rather than padded per row.
-- The Go server sends one even-X/even-width changed bounding rectangle, with a
-  white precursor and acknowledgement wait, or a full frame when no
-  connection-local framebuffer is available.
+- The Go server sends one even-X/even-width changed bounding rectangle, or a
+  full frame when no connection-local framebuffer is available.
 - Joan's published specification advertises a faster 1-bit partial refresh in
   addition to its 4-bit full-screen refresh.
 

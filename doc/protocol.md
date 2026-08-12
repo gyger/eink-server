@@ -105,8 +105,9 @@ The field at logical offset 60 was previously described as a screen ID because
 all full-screen captures contained zero; a three-rectangle VSS capture proves
 that it is the packed origin.
 
-Encoding 4 stores two pixels per byte. The high nibble is first, the low nibble
-second, and each nibble maps to intensity `n × 17`. Packing is continuous over
+Encoding 4 stores two pixels per byte. The low nibble is the left/first pixel,
+the high nibble is the right/second pixel, and each nibble maps to intensity
+`n × 17`. Packing is continuous over
 the rectangle rather than padded per row. VSS sent an odd-width `943×312`
 rectangle successfully because its total pixel count was even. An encoder must
 therefore require an even rectangle pixel count, not necessarily an even
@@ -140,17 +141,17 @@ frame happened to clear most of the affected area to white. Whether the clean
 physical result depends on partial rectangles, the progressing status kind,
 or that intervening light frame remains to be isolated experimentally.
 
-The server now follows the observed sequencing model for delivery. It computes
-an even-X/even-width bounding rectangle around changed packed pixels (or uses a
-full-screen rectangle when no prior connection-local framebuffer is known),
-sends that region as white with sequence `N`, waits for the matching type-1
-acknowledgement, and then sends the final region with sequence `N+1`. Rectangle
-coordinates are expressed in the native wire orientation. A physical test
-confirmed that this sequence alone does not remove the text-channel artifact.
+The server computes an even-X/even-width bounding rectangle around changed
+packed pixels (or uses a full-screen rectangle when no prior connection-local
+framebuffer is known) and sends the final region as one logical image. Rectangle
+coordinates are expressed in the native wire orientation. It does not send an
+extra white precursor: the observed VSS `Loading ...` image was application
+content, not evidence that the protocol requires a clearing step.
 Conversely, replaying VSS's exact full-screen packed pixels through this Go
-framing produced the same flawless physical result as VSS. The remaining
-graphics defect is therefore in raster beautification rather than these
-protocol fields. The server now defaults to a selectable `eink` preparation
+framing produced the same flawless physical result as VSS. A later structured
+probe established that the apparent graphics defect was reversed nibble order:
+VSS stores the left pixel in the low nibble and the right pixel in the high
+nibble. The Go packer now follows that order. The server defaults to a selectable `eink` preparation
 mode that uses native-resolution SVG rendering, hardens high-contrast edge
 coverage, and reproduces the recovered VSS grayscale range mapping. The older
 3× supersampled path remains available as `smooth`. This improves the captured

@@ -42,7 +42,6 @@ type session struct {
 	ready       chan struct{}
 	readyOnce   sync.Once
 	ackMu       sync.Mutex
-	ackWaiters  map[uint32]chan struct{}
 	nextSeq     uint32
 	lastFrame   []byte
 	frameWidth  int
@@ -143,7 +142,6 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 				g.Log.Warn("image acknowledgement UUID mismatch", "remote", remote, "uuid", ack.UUID)
 				continue
 			}
-			active.acknowledge(ack.Sequence)
 			assignmentID, matched, err := g.Store.MarkAcknowledged(ctx, uuid, ack.Sequence)
 			if err != nil {
 				g.Log.Warn("saving image acknowledgement", "uuid", uuid, "sequence", ack.Sequence, "error", err)
@@ -189,7 +187,7 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 		}
 		if uuid == "" {
 			uuid = st.UUID
-			active = &session{conn: c, status: st, ready: make(chan struct{}), ackWaiters: make(map[uint32]chan struct{}), nextSeq: st.Kind + 1}
+			active = &session{conn: c, status: st, ready: make(chan struct{}), nextSeq: st.Kind + 1}
 			g.mu.Lock()
 			if old := g.connections[uuid]; old != nil && old != active {
 				old.conn.Close()
@@ -259,27 +257,6 @@ func (s *session) advanceSequence(observed uint32) {
 	s.ackMu.Unlock()
 }
 
-func (s *session) waitForAcknowledgement(sequence uint32) (<-chan struct{}, func()) {
-	s.ackMu.Lock()
-	ch := make(chan struct{})
-	s.ackWaiters[sequence] = ch
-	s.ackMu.Unlock()
-	return ch, func() {
-		s.ackMu.Lock()
-		delete(s.ackWaiters, sequence)
-		s.ackMu.Unlock()
-	}
-}
-
-func (s *session) acknowledge(sequence uint32) {
-	s.ackMu.Lock()
-	if ch := s.ackWaiters[sequence]; ch != nil {
-		delete(s.ackWaiters, sequence)
-		close(ch)
-	}
-	s.ackMu.Unlock()
-}
-
 func (s *session) write(data []byte) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -311,34 +288,8 @@ func (g *Gateway) deliver(ctx context.Context, active *session) {
 		return
 	}
 	frame, err := g.Renderer.Render(ctx, render.Input{Device: render.Device{UUID: uuid, Width: pending.Width, Height: pending.Height}, ContentType: pending.ContentType, Source: pending.Source, Settings: pending.Settings})
-	primitive := changedPrimitive(frame.Packed4Bit, active.lastFrame, pending.Width, pending.Height, active.frameWidth, active.frameHeight)
 	if err == nil {
-		clearSequence := active.sequence()
-		clear := primitive
-		clear.Pixels = make([]byte, len(primitive.Pixels))
-		for i := range clear.Pixels {
-			clear.Pixels[i] = 0xff
-		}
-		var wire []byte
-		wire, err = pv3.BuildImagePrimitives(st.UUIDBytes, clearSequence, 0, []pv3.ImagePrimitive{clear})
-		if err == nil {
-			acknowledged, cancel := active.waitForAcknowledgement(clearSequence)
-			err = active.write(wire)
-			if err == nil {
-				g.emit(ctx, uuid, "image.clear_sent", map[string]any{"assignment_id": pending.ID, "sequence": clearSequence, "x": clear.X, "y": clear.Y, "width": clear.Width, "height": clear.Height})
-				select {
-				case <-acknowledged:
-					g.emit(ctx, uuid, "image.clear_acknowledged", map[string]any{"assignment_id": pending.ID, "sequence": clearSequence})
-				case <-time.After(15 * time.Second):
-					err = errors.New("timed out waiting for intermediate image acknowledgement")
-				case <-ctx.Done():
-					err = ctx.Err()
-				}
-			}
-			cancel()
-		}
-	}
-	if err == nil {
+		primitive := changedPrimitive(frame.Packed4Bit, active.lastFrame, pending.Width, pending.Height, active.frameWidth, active.frameHeight)
 		finalSequence := active.sequence()
 		err = g.Store.PrepareSend(ctx, pending.ID, finalSequence)
 		if err == nil {

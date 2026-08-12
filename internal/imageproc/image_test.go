@@ -21,6 +21,23 @@ func TestContainAndPack(t *testing.T) {
 		t.Fatal("contain background is not white")
 	}
 }
+
+func TestPackUsesPV3LowNibbleFirstOrder(t *testing.T) {
+	src := image.NewGray(image.Rect(0, 0, 2, 1))
+	src.SetGray(0, 0, color.Gray{0})
+	src.SetGray(1, 0, color.Gray{255})
+	settings := Defaults()
+	settings.Fit = "exact"
+	settings.Rendering = "smooth"
+	packed, _, err := Process(src, 2, 1, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packed) != 1 || packed[0] != 0xf0 {
+		t.Fatalf("packed=%x, want f0 (right in high nibble, left in low)", packed)
+	}
+}
+
 func TestExactRejectsMismatch(t *testing.T) {
 	s := Defaults()
 	s.Fit = "exact"
