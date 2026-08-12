@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"joantablet/server/internal/action"
-	"joantablet/server/internal/events"
-	"joantablet/server/internal/pv3"
-	"joantablet/server/internal/store"
+	"eink-server/internal/action"
+	"eink-server/internal/events"
+	"eink-server/internal/pv3"
+	"eink-server/internal/store"
 )
 
 type fakeNotifier struct{ uuids []string }

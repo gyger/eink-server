@@ -16,13 +16,13 @@ Useful verification commands:
 ```sh
 go test -race ./...
 go vet ./...
-go build -o /tmp/eink-server ./cmd/joan-server
+go build -o /tmp/eink-server ./cmd/eink-server
 ```
 
 Run locally with isolated ports and state:
 
 ```sh
-go run ./cmd/joan-server \
+go run ./cmd/eink-server \
   --device-listen=127.0.0.1:11114 \
   --http-listen=127.0.0.1:18080 \
   --database=/tmp/eink-server.db

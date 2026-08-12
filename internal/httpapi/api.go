@@ -16,10 +16,10 @@ import (
 	"strings"
 	"time"
 
-	"joantablet/server/internal/design"
-	"joantablet/server/internal/events"
-	"joantablet/server/internal/imageproc"
-	"joantablet/server/internal/store"
+	"eink-server/internal/design"
+	"eink-server/internal/events"
+	"eink-server/internal/imageproc"
+	"eink-server/internal/store"
 )
 
 type Connections interface {

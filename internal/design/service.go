@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"joantablet/server/internal/action"
-	"joantablet/server/internal/events"
-	"joantablet/server/internal/store"
+	"eink-server/internal/action"
+	"eink-server/internal/events"
+	"eink-server/internal/store"
 )
 
 var NamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)

@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"joantablet/server/internal/imageproc"
+	"eink-server/internal/imageproc"
 )
 
 type Device struct {
@@ -43,7 +43,7 @@ func (UploadedImage) Render(_ context.Context, in Input) (Frame, error) {
 	}
 	pixels, preview, err := imageproc.Process(img, in.Device.Width, in.Device.Height, in.Settings)
 	if err == nil {
-		// The verified Joan 6 panel displays the raw PV3 framebuffer rotated by
+		// The verified 6-inch tablet panel displays the raw PV3 framebuffer rotated by
 		// 180 degrees relative to the intended screen orientation. Keep previews
 		// and user rotation settings intuitive and transform only wire pixels.
 		pixels = imageproc.RotatePacked180(pixels)

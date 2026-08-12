@@ -11,7 +11,7 @@ type Touch struct {
 }
 
 // ParseTouch decodes the one-record completed-contact message observed on the
-// Joan 6. It does not invent down/move/up phases that are absent from captures.
+// verified 6-inch tablet. It does not invent down/move/up phases that are absent from captures.
 func ParseTouch(rec Record) (Touch, error) {
 	if rec.Type != PacketApplication || rec.Word2 != 0 || len(rec.Payload) != 56 {
 		return Touch{}, errors.New("invalid touch record shape")

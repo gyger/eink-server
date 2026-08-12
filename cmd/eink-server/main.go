@@ -12,14 +12,14 @@ import (
 	"syscall"
 	"time"
 
-	"joantablet/server/internal/action"
-	"joantablet/server/internal/config"
-	"joantablet/server/internal/design"
-	"joantablet/server/internal/events"
-	"joantablet/server/internal/gateway"
-	"joantablet/server/internal/httpapi"
-	"joantablet/server/internal/imageproc"
-	"joantablet/server/internal/store"
+	"eink-server/internal/action"
+	"eink-server/internal/config"
+	"eink-server/internal/design"
+	"eink-server/internal/events"
+	"eink-server/internal/gateway"
+	"eink-server/internal/httpapi"
+	"eink-server/internal/imageproc"
+	"eink-server/internal/store"
 )
 
 func main() {

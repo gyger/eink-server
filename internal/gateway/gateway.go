@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"joantablet/server/internal/events"
-	"joantablet/server/internal/pv3"
-	"joantablet/server/internal/render"
-	"joantablet/server/internal/store"
+	"eink-server/internal/events"
+	"eink-server/internal/pv3"
+	"eink-server/internal/render"
+	"eink-server/internal/store"
 )
 
 type Gateway struct {

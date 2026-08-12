@@ -10,16 +10,16 @@ PNG/JPEG/SVG client ──HTTP :8080──> API / design and image processing
                                       v
                                   SQLite state
                                       │
-Joan tablet <────PV3 TCP :11113──── gateway / frame delivery
+PV3 tablet <────PV3 TCP :11113──── gateway / frame delivery
 ```
 
 The HTTP listener serves the native API, compatibility routes, SSE, and the
-embedded management page. Joan tablets initiate outbound TCP connections to the
+embedded management page. PV3 tablets initiate outbound TCP connections to the
 PV3 listener.
 
 ## Packages
 
-- `cmd/joan-server` owns flags, logging, shutdown, and listener startup.
+- `cmd/eink-server` owns flags, logging, shutdown, and listener startup.
 - `internal/pv3` implements record framing, status parsing, responses, image
   messages, and raw LZ4 chunks.
 - `internal/gateway` owns live tablet connections and delivery ordering.

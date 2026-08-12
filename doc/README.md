@@ -1,4 +1,4 @@
-# EInk Tablet Server documentation
+# eink-server documentation
 
 This directory documents the replacement server implemented under `server/`.
 It is intentionally narrower than Visionect Software Suite: it provides direct
@@ -21,7 +21,7 @@ browser renderer, Redis, Postgres, or a multi-user administration system.
   sources, actions, embedded data, and current limits.
 - [Development and testing](development.md) — Fedora Toolbox workflow, test
   commands, fixtures, and project structure.
-- [Tablet setup and validation](tablet-validation.md) — connecting a Joan,
+- [Tablet setup and validation](tablet-validation.md) — connecting a PV3 tablet,
   first-image validation, troubleshooting, and safety notes.
 - [Next steps](next-steps.md) — prioritized roadmap and completion criteria for
   physical validation, protocol hardening, touch, rendering, and deployment.

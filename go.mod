@@ -1,4 +1,4 @@
-module joantablet/server
+module eink-server
 
 go 1.26
 

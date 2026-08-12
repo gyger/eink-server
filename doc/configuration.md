@@ -22,7 +22,7 @@ Settings are applied in this order, with later sources taking precedence:
 For example, this loads a file but changes only its HTTP listener at runtime:
 
 ```sh
-./joan-server --config /etc/eink-server.toml --http-listen 127.0.0.1:9090
+./eink-server --config /etc/eink-server.toml --http-listen 127.0.0.1:9090
 ```
 
 ## Format
@@ -36,7 +36,7 @@ device_listen = ":11113"
 http_listen = ":8080"
 database = "./data/eink.db"
 log_format = "text"
-system_name = "EInk Server"
+system_name = "eink-server"
 design_directory = "./designs"
 default_design = "builtin:status"
 default_rendering = "eink"
@@ -58,7 +58,7 @@ An example file is included as `eink-server.example.toml`.
 | `http_listen` | `:8080` | `--http-listen` | HTTP address for the UI and REST API. |
 | `database` | `./data/eink.db` | `--database` | SQLite database path. Relative paths use the process working directory. |
 | `log_format` | `text` | `--log-format` | `text` for human-readable logs or `json` for structured logs. |
-| `system_name` | `EInk Server` | — | Value available to SVG designs as `${system.name}`. |
+| `system_name` | `eink-server` | — | Value available to SVG designs as `${system.name}`. |
 | `design_directory` | `./designs` | — | Optional directory scanned for top-level SVG designs. |
 | `default_design` | `builtin:status` | — | Design assigned when an unknown tablet first enrolls; set to an empty string to disable. |
 | `default_rendering` | `eink` | — | Image rendering mode assigned when a tablet first enrolls: `eink` or `smooth`. |

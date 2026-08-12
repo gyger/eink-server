@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"joantablet/server/internal/imageproc"
-	"joantablet/server/internal/pv3"
+	"eink-server/internal/imageproc"
+	"eink-server/internal/pv3"
 )
 
 func TestPersistenceAndAssignment(t *testing.T) {

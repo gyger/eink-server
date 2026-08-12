@@ -192,7 +192,7 @@ func Process(src image.Image, width, height int, settings Settings) ([]byte, []b
 }
 
 // RotatePacked180 converts an intended-orientation 4-bit grayscale frame to the
-// native framebuffer orientation used by the verified Joan 6. Two pixels are
+// native framebuffer orientation used by the verified 6-inch tablet. Two pixels are
 // stored per byte, so rotating reverses the byte order and swaps both nibbles.
 func RotatePacked180(packed []byte) []byte {
 	out := make([]byte, len(packed))

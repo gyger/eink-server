@@ -1,4 +1,4 @@
-# EInk Tablet Server
+# eink-server
 
 A small self-hosted Go gateway for Joan/Visionect protocol-v3 tablets. It
 accepts PNG/JPEG images and interactive SVG designs, converts them to the
@@ -26,7 +26,7 @@ toolbox enter
 cd /var/home/gyger/Projects/JoanTablet/server
 sudo dnf install golang
 go test ./...
-go run ./cmd/joan-server
+go run ./cmd/eink-server
 ```
 
 With no configuration file or flags, the defaults are:

@@ -3,7 +3,7 @@ package events
 import (
 	"sync"
 
-	"joantablet/server/internal/store"
+	"eink-server/internal/store"
 )
 
 type Hub struct {

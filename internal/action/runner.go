@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"time"
 
-	"joantablet/server/internal/events"
-	"joantablet/server/internal/store"
+	"eink-server/internal/events"
+	"eink-server/internal/store"
 )
 
 type Invocation struct {

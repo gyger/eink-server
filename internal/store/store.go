@@ -12,8 +12,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"joantablet/server/internal/imageproc"
-	"joantablet/server/internal/pv3"
+	"eink-server/internal/imageproc"
+	"eink-server/internal/pv3"
 )
 
 type Store struct {

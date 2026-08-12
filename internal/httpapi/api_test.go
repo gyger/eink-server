@@ -13,11 +13,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"joantablet/server/internal/action"
-	"joantablet/server/internal/design"
-	"joantablet/server/internal/events"
-	"joantablet/server/internal/pv3"
-	"joantablet/server/internal/store"
+	"eink-server/internal/action"
+	"eink-server/internal/design"
+	"eink-server/internal/events"
+	"eink-server/internal/pv3"
+	"eink-server/internal/store"
 )
 
 type fakeConnections struct{ notified []string }

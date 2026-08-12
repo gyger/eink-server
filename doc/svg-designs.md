@@ -19,7 +19,7 @@ rendering while leaving useful placeholder text for an SVG editor:
 
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 758">
-  <text x="40" y="80" data-value="${system.name}">EInk Server</text>
+  <text x="40" y="80" data-value="${system.name}">eink-server</text>
   <text x="40" y="160" data-value="${device.temperature} °C">-- °C</text>
   <text x="40" y="240" data-value="${device.humidity}% RH">--% RH</text>
 </svg>

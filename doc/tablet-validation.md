@@ -20,7 +20,7 @@ Inside the Fedora Toolbox:
 
 ```sh
 cd /var/home/gyger/Projects/JoanTablet/server
-go run ./cmd/joan-server
+go run ./cmd/eink-server
 ```
 
 Expected startup logs mention both listeners:

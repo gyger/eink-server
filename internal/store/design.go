@@ -9,7 +9,7 @@ import (
 	"errors"
 	"time"
 
-	"joantablet/server/internal/imageproc"
+	"eink-server/internal/imageproc"
 )
 
 type Design struct {

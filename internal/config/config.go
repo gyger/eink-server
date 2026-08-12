@@ -47,7 +47,7 @@ func Defaults() Config {
 		HTTPListen:       ":8080",
 		Database:         "./data/eink.db",
 		LogFormat:        "text",
-		SystemName:       "EInk Server",
+		SystemName:       "eink-server",
 		DesignDirectory:  "./designs",
 		DefaultDesign:    "builtin:status",
 		DefaultRendering: "eink",
