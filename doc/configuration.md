@@ -89,6 +89,10 @@ then stored in SQLite and can be changed independently through the management
 page or device API. `eink` uses native-resolution SVG rendering and the E Ink
 pixel-preparation path; `smooth` retains 3× supersampling.
 
+`default_timezone` and `default_locale` are likewise enrollment defaults.
+Changing the TOML file does not alter devices that are already stored; change
+those values through the management page or device API.
+
 An empty file uses all defaults. To listen only on the local machine, use
 `127.0.0.1:PORT`; an address beginning with `:` listens on all available
 interfaces.

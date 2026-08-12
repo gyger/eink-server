@@ -16,10 +16,9 @@ tablet's serial CLI and is outside the Go server.
 
 ## Start the server
 
-Inside the Fedora Toolbox:
+From the repository root:
 
 ```sh
-cd /var/home/gyger/Projects/JoanTablet/server
 go run ./cmd/eink-server
 ```
 

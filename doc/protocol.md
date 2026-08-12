@@ -1,8 +1,7 @@
 # PV3 protocol notes
 
-This implementation is based on captured traffic and fixtures under
-`Discovery/codex/captures`. It does not treat TCP read boundaries as message
-boundaries.
+This implementation is based on traffic captured during development. It does
+not treat TCP read boundaries as message boundaries.
 
 ## Outer record
 
@@ -254,5 +253,7 @@ records are not acknowledged.
 ## Unsupported protocol areas
 
 Bootloader type-2 connections are logged and closed. Button, file, other input,
-GPS, command, firmware, encryption, partial rectangles, and device-control
-messages are not decoded or generated.
+GPS, command, firmware, encryption, general multi-rectangle output, waveform
+selection, and device-control messages are not decoded or generated. The
+server does generate one changed bounding rectangle when it has a previous
+connection-local framebuffer.

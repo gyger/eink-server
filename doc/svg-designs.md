@@ -28,7 +28,7 @@ rendering while leaving useful placeholder text for an SVG editor:
 Supported variables are `system.name`, `system.time`, `system.date`,
 `system.locale`, `device.name`, `device.uuid`, `device.location`, `device.battery`, `device.temperature`,
 `device.humidity`, `device.width`, `device.height`, `device.firmware`, and
-`device.display_state`. `system.time` is the server-local time in `HH:MM`
+`device.display_state`. `system.time` is the tablet-local time in `HH:MM`
 format in the tablet's configured IANA timezone; `system.date` uses
 `YYYY-MM-DD`. Unknown values reject the design. A new frame is queued only when a
 value actually referenced by the active design changes.
@@ -74,8 +74,8 @@ must provide an explicit `data-hitbox="x y width height"`:
 
 `translate`, `scale`, and matrix transforms are applied to hit areas. When hit
 areas overlap, the later element in document order wins. `data-region` records
-a rectangular slot for future Go or WASM providers; providers are not executed
-yet.
+a rectangular slot for future general-purpose Go or WASM providers. The
+built-in calendar uses the separate `data-widget` contract.
 
 Touch dispatch is tied to the frame ID reported by the tablet, so touches made
 during a screen transition use the interaction map for the screen the user
@@ -102,12 +102,10 @@ Webhook actions receive a JSON POST:
 ## Sources and pages
 
 Design IDs use `builtin:`, `file:`, and `db:` prefixes. The server includes
-`builtin:status`, `builtin:touch-demo`, and `builtin:eink-verification`. New tablets receive
-`builtin:status` by default; `default_design` can select another design or be
-set to an empty string to disable automatic assignment.
-The status design is a clock and calendar dashboard inspired by the checked-in
-sample dashboard. Its clock and update label use `system.time`; the February
-2026 calendar is static for now.
+`builtin:status`, `builtin:touch-demo`, and `builtin:eink-verification`. New
+tablets receive `builtin:status` by default; `default_design` can select another
+design or be set to an empty string to disable automatic assignment. The status
+design contains a device-local clock and the localized calendar widget.
 
 `builtin:eink-verification` is a native 1024×758 diagnostic screen containing
 all 16 protocol grayscale values, one- and two-pixel horizontal and vertical

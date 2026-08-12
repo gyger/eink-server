@@ -82,15 +82,15 @@ remain historical metadata but are never replayed ahead of a newer frame.
 
 The default database is `./data/eink.db`. It contains:
 
-- Device identity, name, location, first/last seen, dimensions, firmware, battery,
-  temperature, relative humidity,
+- Device identity, name, location, timezone, locale, first/last seen,
+  dimensions, firmware, battery, temperature, relative humidity,
   display-state ID, raw status fields, and image defaults.
 - Original uploaded image blobs.
 - Per-device assignments, settings snapshots, frame IDs, and delivery state.
 - Status samples when values change or after a 15-minute sampling interval.
 - Lifecycle and delivery events.
-- Reusable and active SVG designs, webhook actions, and interaction maps tied
-  to exact frame IDs.
+- Reusable and active SVG designs, refresh metadata, webhook actions, and
+  interaction maps tied to exact frame IDs.
 
 SQLite runs in WAL mode with foreign keys and a busy timeout. Status samples and
 events are pruned after seven days; events are additionally capped at 10,000.

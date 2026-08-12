@@ -20,8 +20,9 @@ Returns one device or `404 device_not_found`.
 
 ### `PATCH /api/v1/devices/{uuid}`
 
-Updates the friendly name, location, and image defaults. When changing
-defaults, send the complete settings object:
+Updates the friendly name, location, IANA timezone, locale, and image defaults.
+Fields are optional, but when changing image defaults send the complete settings
+object:
 
 ```json
 {
@@ -103,6 +104,7 @@ Opens a Server-Sent Events stream. Event names currently include:
 - `device.connected`, `device.disconnected`, `device.enrolled`, `device.status`
 - `image.queued`, `image.sent`, `image.acknowledged`, `image.delivered`,
   `image.failed`
+- `design.rendered`
 
 SVG touch and action events include `touch.tap`, `action.unresolved`,
 `action.started`, `action.succeeded`, and `action.failed`.

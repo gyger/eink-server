@@ -13,25 +13,25 @@ when the tablet checks in.
 
 Detailed documentation is available in [doc/README.md](doc/README.md).
 
-The captured Joan 6 (1024×758, firmware 7.4.4407) is the verified target. Other
-PV3 devices are handled using dimensions reported in status, but are not yet
-claimed as tested.
+Tested with a Joan 6 tablet (1024×758, firmware 7.4.4407).
 
-## Development
+## Build and run
 
-The host workspace does not contain Go. Use the default Fedora Toolbox:
+Requirements: Linux and Go 1.26 or newer.
 
 ```sh
-toolbox enter
-cd /var/home/gyger/Projects/JoanTablet/server
-sudo dnf install golang
 go test ./...
-go run ./cmd/eink-server
+go build -o eink-server ./cmd/eink-server
+./eink-server
 ```
+
+The server creates its SQLite database and parent directory automatically.
+Copy `eink-server.example.toml` beside the binary as `eink-server.toml` to
+customize it, or pass `--config /path/to/eink-server.toml`.
 
 With no configuration file or flags, the defaults are:
 
-- `:11113` — EInk tablet TCP protocol
+- `:11113` — E Ink tablet TCP protocol
 - `:8080` — web UI and REST API
 - `./data/eink.db` — SQLite state
 - `eink` — default rendering mode for newly enrolled tablets
@@ -42,7 +42,9 @@ missing or empty file uses all defaults. Use `--config /path/to/config.toml` to
 select another file; command-line settings override values from the file. See
 [configuration](doc/configuration.md) for the format and complete behavior.
 
-Point the tablet at the server's LAN address and port 11113. Open
+Configure the tablet with its vendor configurator or serial interface to use
+the server's LAN address and port 11113, with outbound encryption disabled.
+The server does not modify tablet settings. Open
 `http://SERVER:8080/` after the tablet has connected.
 Newly enrolled tablets are automatically sent the `builtin:status` clock and
 calendar dashboard. Set the tablet's name and location in the web UI; both are
@@ -53,6 +55,9 @@ supersampled renderer; the shipped default is `eink`.
 
 This release has no authentication or TLS. Do not expose either listener to the
 public internet.
+
+For development workflows, validation steps, and protocol limitations, see the
+[documentation index](doc/README.md).
 
 ## Native API
 
@@ -91,17 +96,6 @@ defaults can be changed with
 Compatibility routes are intentionally limited to `POST /login`,
 `GET /api/device/`, and multipart `PUT /backend/{uuid}`. VSS sessions, HTML/URL
 rendering, firmware, sleep schedules, and device commands are not implemented.
-
-## Hardware acceptance
-
-Before relying on generated frames, test with the Joan physically disconnected
-from USB (USB changes its normal display-transfer behavior):
-
-1. Confirm the tablet auto-enrolls and reports its status.
-2. Upload a high-contrast test pattern and verify it displays.
-3. Confirm a later status echoes the assigned frame ID and the UI changes the
-   assignment from `sent` to `delivered`.
-4. Restart the server and confirm an offline queued image survives.
 
 WASM widgets, multi-page navigation, general multi-rectangle/waveform control,
 URL rendering, encryption, bootloader/firmware updates, and verified

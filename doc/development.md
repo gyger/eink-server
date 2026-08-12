@@ -1,13 +1,10 @@
 # Development and testing
 
-## Fedora Toolbox
+## Go toolchain
 
-Development uses the default Fedora Toolbox. The current environment has
-`fedora-toolbox-44` with Go 1.26 installed.
+The module requires Go 1.26. Run commands from the repository root:
 
 ```sh
-toolbox enter
-cd /var/home/gyger/Projects/JoanTablet/server
 go test ./...
 ```
 
@@ -40,8 +37,8 @@ the Go standard library.
 
 ## Tests and evidence
 
-`internal/pv3` tests consume the real fixtures in
-`Discovery/codex/captures`. They verify:
+`internal/pv3` tests use byte-level records derived from captured traffic. They
+verify:
 
 - Fragmentation-safe outer record reads and checksum validation.
 - UUID, status, firmware, battery, and display dimension decoding.
@@ -49,16 +46,15 @@ the Go standard library.
 - Image message headers, frame ID, encoding, packed pixels, and LZ4 round trips.
 - Literal-only LZ4 fallback for incompressible data.
 
-Other package tests cover image processing and both rendering modes, SQLite restart persistence,
-assignments, native uploads, legacy device shapes, and input rejection.
+Other package tests cover image processing and both rendering modes, SQLite
+restart persistence, assignments, native uploads, legacy device shapes,
+calendar generation, device-local time, and input rejection.
 
-To compare candidate pixel preparation with the captured full-screen VSS
-reference, run from `server/`:
+The optional comparison tool requires Pillow and two external PNG files. For
+example:
 
 ```sh
-python3 tools/compare_vss_raster.py \
-  ../debug/test_pattern/runs/identical-frame-01/assignment-12-source.png \
-  ../debug/test_pattern/runs/vss-fullscreen-diagnostic-01/decoded/02-type-3-length-70140.png \
+python3 tools/compare_vss_raster.py SOURCE.png VSS_REFERENCE.png \
   --output /tmp/vss-comparison
 ```
 

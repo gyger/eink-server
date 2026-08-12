@@ -1,300 +1,42 @@
-# Next steps
+# Roadmap
 
-The server is implemented and verified with captured protocol fixtures, unit and
-integration tests, the race detector, static analysis, a local process smoke
-test, and a first end-to-end test with the physical Joan 6. The tablet connected,
-auto-enrolled, accepted a generated image transfer, and later confirmed the
-server-assigned frame ID. The most important remaining work is broadening that
-hardware validation beyond the successful first path.
+The basic path is working on a Joan 6 tablet running firmware 7.4.4407: status,
+telemetry, full and changed-rectangle images, acknowledgements, delivery
+confirmation, touch events, SVG actions, and the dynamic status dashboard.
 
-## Immediate improvements
+## Reliability and packaging
 
-The 2026-08-11 physical captures identified two application payloads that need
-dedicated dispatch before broader feature work.
+- Exercise offline queueing, restart recovery, interrupted transfers, rapid
+  replacement uploads, and multiple simultaneous tablets.
+- Reconcile the desired frame after reconnect when the tablet reports a
+  different display-state ID.
+- Add release version information, reproducible Linux builds, a systemd service
+  example, and SQLite backup/restore instructions.
+- Add explicit retry and delivery diagnostics to the management page.
 
-Completed:
+## Protocol discovery
 
-- Application-message dispatch uses the logical message type at payload
-   offset 20. Known values are `1` for acknowledgement, `3` for full status,
-   `5` for a server image, and `6` for touch. Validate the complete record shape
-   before selecting a decoder; do not dispatch from a single word alone.
-- The tablet's type-1 post-image acknowledgement has a strict decoder. Its
-   44-byte payload is `reserved`, UUID, message type `1`, echoed image/status
-   sequence, then `8, 0, 1, 0`. Correlate the echoed sequence for diagnostics,
-   but continue using a later status frame-ID echo as the authoritative
-   `delivered` signal. The precise names of the `8, 0, 1` fields remain unknown.
-- Type-6 touch records have a fixture-tested decoder. The 2026-08-11 live retest
-  identified logical offset 36 as the displayed frame ID rather than a constant
-  zero. The decoder now accepts and exposes it, and the logfile includes it with
-  physical and raw coordinates. A second physical retest passed: three taps on
-  visible dashboard regions logged the expected frame ID and coordinates with
-  no decoder warnings.
+- Identify the fast 1-bit partial-refresh encoding or waveform and determine
+  whether periodic full refreshes are needed to control ghosting.
+- Confirm heartbeat units and any supported sleep, wake, redraw, or reboot
+  commands from official captures.
+- Test acknowledgement, touch, telemetry, frame-ID, orientation, and image
+  behavior on other firmware and display models before generalizing constants.
+- Preserve unknown records and fields rather than assigning semantics without
+  captured evidence. See [protocol discovery](protocol-discovery.md).
 
-Touches are now published as `touch.tap` and correlated with the stored
-interaction map for the frame ID reported by the tablet. SVG designs can route
-the topmost matching region to a registered webhook action. Quick taps, a
-three-second hold, and a slow drag still each represent one completed-contact
-record; the server does not invent down/move/up phases.
+## Designs and integrations
 
-The byte layouts and capture observations are documented in
-`server/doc/protocol.md` and `Discovery/codex/README.md`.
+- Add page navigation while retaining frame-correlated interaction maps.
+- Define a bounded provider contract for `data-region`; use a native Go
+  provider before introducing a WASM runtime or ABI.
+- Add scheduler jitter and configurable refresh limits if deployments use many
+  tablets.
+- Improve previews and per-device event history in the embedded UI.
 
-The Joan 6 native 180-degree framebuffer correction was physically retested on
-2026-08-11 and passed: the same dashboard source displayed upright with the
-user-facing setting still at `rotation=0`.
+## Security
 
-## 1. Complete the physical display acceptance matrix
-
-The first physical protocol test passed on 2026-08-10 with the Joan disconnected
-from USB and configured for `10.42.0.1:11113`.
-
-Completed:
-
-- Stopped the official VSS gateway and ran this server on port 11113 with an
-  isolated SQLite database.
-- Disconnected the tablet's USB/FTDI data cable before image delivery.
-- Confirmed the Joan auto-enrolled as
-  `30004f00-0650-4858-5239-312000000000` and reported firmware `7.4.4407`,
-  battery, temperature, and 1024×758 resolution.
-- Captured the initial 552-byte tablet status record and the server's 85-byte
-  compressed initial response.
-- Uploaded a known 1024×758 grayscale PNG through the native API. Assignment 1
-  transitioned from `queued` to `sent`.
-- Confirmed the tablet later echoed generated frame ID `1898519895` as its
-  display state. The assignment transitioned to `delivered`, validating that
-  the image checksum/frame-ID field can be treated as the assigned opaque frame
-  ID on this firmware.
-- Observed normal disconnect/reconnect polling without losing the device's
-  online state.
-- On 2026-08-11, sent `prior-art/joan-dashboard/docs/preview.png` with
-  `rotation=0`. The tablet displayed the recognizable dashboard, but it was
-  physically upside down. This confirms image display while exposing a Joan 6
-  orientation/default-rotation mismatch in the server.
-- After adding the native 180-degree packed-framebuffer correction, repeated
-  the same dashboard test with `rotation=0`. The user physically confirmed that
-  it displayed upright. The correction is therefore accepted on Joan 6
-  firmware 7.4.4407.
-- Saved the complete 110-packet capture at
-  `Discovery/codex/captures/2026-08-10-test-server-01.pcapng` and the isolated
-  test database at `Discovery/codex/runs/test-server-01/joan.db`.
-
-Remaining:
-
-- Finish visual inspection of grayscale levels and absence of corruption. Image
-  content and corrected orientation are now physically confirmed.
-- Send a deliberately simple black-and-white test pattern and record a visual
-  result.
-- Repeat with a grayscale photograph using Floyd–Steinberg dithering and inspect
-  the physical result.
-- Build an E Ink typography test sheet covering Noto Sans/Serif sizes, weights,
-  grayscale levels, horizontal/vertical strokes, and reversed white-on-black
-  text; photograph the physical panel rather than judging only the PNG preview.
-- Physically validate the selectable `eink` rendering mode. It now removes SVG
-  supersampling, hardens high-contrast antialiased edges, and applies the
-  recovered VSS grayscale range preparation; `smooth` preserves the previous
-  renderer. The captured-frame comparison improved from 78,883 to 71,176
-  differing pixels, but is not byte-identical because VSS's WebKit input raster
-  also differs. Compare both modes on text, thin lines, curves, and a photograph
-  before retaining `eink` as the default.
-- Add a device-faithful preview mode that shows the final 16 grayscale levels
-  and flags text below the tested readable size. Compare it against physical
-  results before choosing defaults.
-- Promote the successful capture into the documented golden-fixture set and add
-  its observations to `Discovery/codex/README.md`.
-
-Exit criteria:
-
-- Generated images are visually confirmed to display correctly without VSS.
-- Assignments transition through `queued`, `sent`, and `delivered` (completed
-  for one image on Joan 6 firmware 7.4.4407).
-- The capture is saved as a new golden fixture with observations documented in
-  `Discovery/codex/README.md`.
-
-If the image is rejected, compare the generated logical message and chunk stream
-against the two successful VSS image captures. Investigate the image checksum
-field first; do not guess at unrelated fields.
-
-## 2. Exercise recovery and multi-device behavior
-
-After the successful first transfer, validate the service behavior expected in
-normal unattended operation:
-
-- Queue an image while the tablet is offline and verify delivery after reconnect.
-- Restart the server with a queued assignment and verify SQLite recovery.
-- Reconcile the screen after every reconnect. A tablet may replace its previous
-  content with an offline-symbol screen while the server is unavailable, even
-  though SQLite still marks the latest desired assignment as `delivered`. Compare
-  the reconnect status/display-state ID with the latest desired frame ID and
-  resend that frame whenever they differ. If the device has no desired frame,
-  optionally send a small built-in "connected" acknowledgement screen so the
-  stale offline symbol is cleared.
-- Replace an active connection with a new connection for the same UUID.
-- Upload several images rapidly and verify only the newest desired image matters.
-- Interrupt a transfer and confirm it retries safely on a later connection.
-- Connect two or more tablets and verify independent images and broadcast.
-- Run continuously for at least several heartbeat cycles and inspect memory,
-  database size, event pruning, and reconnect logs.
-
-Exit criteria:
-
-- No duplicate or interleaved PV3 writes.
-- A failed tablet does not affect other devices.
-- Restart and reconnect behavior requires no manual database repair.
-- A reconnect restores the latest desired screen, or a documented connected
-  fallback, instead of leaving the tablet's offline-symbol screen visible.
-
-## 3. Turn remaining protocol assumptions into tests
-
-Use physical captures to tighten the current implementation:
-
-- Add the observed same-connection image delivery after the initial status
-  exchange as a regression test; this succeeded in the 2026-08-10 hardware run.
-- Confirm frame-ID generation rules across multiple firmware versions.
-- Extend type-1 acknowledgement fixture coverage if another firmware changes
-  the known shape. Its sequence correlation is implemented; the precise
-  name/semantics of the trailing `8, 0, 1` fields remain unknown.
-- Dispatch the now-identified type-6 touch record before the status parser.
-  During the 2026-08-11 captures it was harmlessly logged as `unsupported
-  protocol version 6`, but this warning is misleading.
-- Verify the status field map on every available Joan firmware and preserve
-  model-specific differences explicitly.
-- Capture malformed or interrupted transfers where practical and document the
-  tablet's retry behavior.
-- Add golden encode comparisons, not only decode tests, wherever VSS output is
-  deterministic.
-
-Exit criteria:
-
-- Every field used to generate traffic is either observed, fixture-tested, or
-  clearly labeled as an opaque value.
-- The protocol document matches the implementation and current captures.
-
-## 4. Improve operation and packaging
-
-Once hardware delivery works reliably:
-
-- Add a `Makefile` or small task script that runs formatting, tests, race tests,
-  vet, and the build inside the default Fedora Toolbox.
-- Produce versioned Linux binaries and include build/version information in
-  `/api/v1/health` and startup logs.
-- Add a systemd user or system service example with a persistent data directory,
-  restart policy, and restricted permissions.
-- Add graceful database backup instructions. The schema-version mechanism is
-  in place; test backup, upgrade, and failure recovery before shipping the
-  first migration beyond version 1.
-- Add optional Prometheus-style counters only if operational experience shows
-  logs and the event API are insufficient.
-- Add configurable event/status retention and upload limits if real usage needs
-  values other than the current defaults.
-
-Keep the normal deployment as one binary plus one SQLite file. A container image
-is not required unless a real deployment needs it.
-
-## 5. Refine the management experience
-
-The current embedded UI is intentionally small. Useful incremental additions are:
-
-- Show connection and image-delivery events per device.
-- Show clear queued/sent/delivered/error timestamps and retry errors.
-- Allow previewing processing changes before saving or sending.
-- Add confirmation and per-device results for broadcasts.
-- Expose the latest raw known/unknown status fields in a diagnostics section.
-- Add an explicit retry action that requeues the desired assignment without
-  requiring another upload.
-
-Avoid adding VSS-style sessions, application catalogs, or HTML rendering unless
-a concrete use case justifies their complexity.
-
-## 6. Continue touch protocol validation
-
-The first protocol-research milestone was completed on 2026-08-11. Three known
-taps, a hold, and a drag established the type-6 record boundary, UUID,
-native-panel coordinates, and 180-degree coordinate transform. This firmware
-emitted one completed-contact record per gesture and no separate movement or
-phase records. No acknowledgement was required against the test server.
-
-The server now strictly decodes touch records, publishes `touch.tap`, preserves
-frame correlation, and dispatches SVG action regions. Remaining protocol work:
-
-1. Repeat through official VSS to determine whether it returns an optional
-   response or enables richer touch reporting.
-2. Test repeated contacts and edge/extreme coordinates on a coordinate grid.
-3. Do not invent down/move/up phases unless another capture actually produces
-   them.
-
-Exit criteria:
-
-- Known contacts decode to the expected physical coordinates and observed
-  completed-contact abstraction.
-- Unknown variants are preserved or rejected safely rather than misdecoded.
-- Receiving touch events does not disturb heartbeat or image delivery.
-
-## 7. Extend SVG rendering with providers
-
-The SVG engine now renders dynamic device values, stores interaction maps per
-frame, and invokes registered webhook actions. The built-in touch demo provides
-the first interactive proof of concept. Remaining extensions are:
-
-- Define a provider contract for rectangular `data-region` slots.
-- Add a general design-driven refresh scheduler before defining a WASM ABI. A
-  design should be able to declare its desired interval on the root SVG (for
-  example, `data-refresh="1m"`); designs without it remain event-driven.
-- Treat the requested interval as a hint: enforce a configurable safe minimum,
-  align periodic designs to interval boundaries where practical, add jitter to
-  avoid refreshing every tablet simultaneously, and avoid queuing a frame when
-  the rendered output has not changed. The built-in clock should request a
-  one-minute interval through this mechanism rather than receive special-case
-  scheduler logic.
-- Add `data-page` navigation while preserving frame-correlated action maps.
-- Debounce provider refreshes and account for E Ink refresh latency.
-
-Exit criteria:
-
-- A provider updates only its declared region and schedules frames safely.
-- Provider/page state survives reconnects and server restarts.
-- A bounded WASM ABI is based on a proven Go provider rather than speculation.
-
-## 8. Broaden hardware support carefully
-
-Support additional tablets only with device-specific captures and acceptance
-tests:
-
-- Test another Joan 6 firmware revision.
-- Capture and verify a Joan 13 or other Visionect PV3 display.
-- Confirm resolution, orientation, encoding, display count, and update flags.
-- Move the currently verified Joan 6 native 180-degree framebuffer correction
-  into an explicit per-model capability before supporting a model with a
-  different native orientation.
-- Add model/firmware compatibility notes and fixtures.
-- Keep dynamic dimensions, but introduce explicit capability records if models
-  require different encoding or message behavior.
-
-Until those tests pass, documentation and releases should continue to say:
-"Joan 6 firmware 7.4.4407 verified; other PV3 devices experimental."
-
-## 9. Add security only when the deployment boundary changes
-
-For a trusted isolated LAN, the present no-authentication model is intentional.
-Before exposing the management API to a larger network:
-
-- Add real administrator authentication and CSRF protection.
-- Terminate TLS directly or document a supported reverse-proxy configuration.
-- Restrict tablet TCP access by network policy and optionally approved UUIDs.
-- Add request-rate limits and stricter audit logging.
-- Review image decoders, multipart handling, SSE limits, and database permissions
-  as externally reachable attack surfaces.
-
-Do not mistake the compatibility `/login` cookie for authentication.
-
-## Recommended milestone order
-
-1. Finish visual, black-and-white, and dithered-image acceptance; document the
-   successful capture as a golden fixture.
-2. Offline queue, restart recovery, interruption, reconnect, and multi-device
-   soak testing.
-3. Protocol corrections backed by fixtures.
-4. Versioned binary and systemd deployment.
-5. UI diagnostics and retry improvements.
-6. Touch capture and decoding.
-7. One touch-driven Go renderer.
-8. Additional tablet models and security as demanded by deployment.
+The current server is intended for a trusted LAN. Before broader exposure, add
+real administrator authentication, CSRF protection, TLS or a documented reverse
+proxy, request limits, and an explicit tablet allow-list. The compatibility
+`/login` cookie is not authentication.

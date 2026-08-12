@@ -22,10 +22,10 @@ The following path is sufficiently understood for the current server:
 - Battery, temperature, dimensions, firmware, heartbeat, and display-state
   telemetry.
 - Status field 15 as relative-humidity percentage on Joan 6 firmware 7.4.4407.
-- Exact replay of VSS packed pixels through the Go transport, proving the
-  remaining text-edge artifact originates in raster preparation rather than
-  PV3 framing. The selectable `eink` renderer approximates the recovered VSS
-  preparation; it is improved but not byte-identical to the WebKit raster.
+- A structured full-screen probe established the Encoding-4 nibble order: the
+  left pixel is stored in the low nibble and the right pixel in the high nibble.
+  Exact replay of VSS packed pixels through the Go transport also confirmed the
+  image framing and native orientation path.
 
 None of the hypotheses below blocks basic full-screen image delivery or touch
 logging on this device and firmware.

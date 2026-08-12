@@ -1,6 +1,6 @@
 # eink-server documentation
 
-This directory documents the replacement server implemented under `server/`.
+This directory documents the eink-server repository.
 It is intentionally narrower than Visionect Software Suite: it provides direct
 image delivery and device status for a small trusted-LAN installation without a
 browser renderer, Redis, Postgres, or a multi-user administration system.
@@ -44,6 +44,8 @@ Implemented:
 - A small compatibility layer for image-oriented VSS clients.
 - Selectable per-tablet `eink` and `smooth` pixel preparation, with `eink` as
   the configurable enrollment default.
+- Device-local clocks, a localized calendar widget, and aligned periodic SVG
+  refreshes while a tablet is connected.
 
 Not implemented:
 
