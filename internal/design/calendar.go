@@ -69,9 +69,12 @@ func emitCalendar(enc *xml.Encoder, attrs map[string]string, values Values) ([]R
 	if navigation == "true" {
 		base := Rect{Recipient: "widget", Provider: "calendar", Instance: attrs["id"]}
 		prev, today, next := base, base, base
-		prev.X, prev.Y, prev.Width, prev.Height, prev.Event = int(x), int(y), int(w*.2), int(h*.14), "previous"
-		today.X, today.Y, today.Width, today.Height, today.Event = int(x+w*.2), int(y), int(w*.6), int(h*.14), "today"
-		next.X, next.Y, next.Width, next.Height, next.Event = int(x+w*.8), int(y), int(w*.2), int(h*.14), "next"
+		hitTop := maxFloat(0, y-h*.1)
+		hitHeight := y + h*.14 - hitTop
+		outerPad := h * .05
+		prev.X, prev.Y, prev.Width, prev.Height, prev.Event = int(maxFloat(0, x-outerPad)), int(hitTop), int(w*.2+outerPad), int(hitHeight), "previous"
+		today.X, today.Y, today.Width, today.Height, today.Event = int(x+w*.2), int(hitTop), int(w*.6), int(hitHeight), "today"
+		next.X, next.Y, next.Width, next.Height, next.Event = int(x+w*.8), int(hitTop), int(w*.2+outerPad), int(hitHeight), "next"
 		if monthOffset > -12 {
 			if err := textToken(enc, x+w*.08, y+h*.08, "‹", "calendar-navigation calendar-previous", "middle", h*.052, "black"); err != nil {
 				return nil, err
@@ -198,6 +201,13 @@ func circleToken(enc *xml.Encoder, cx, cy, r float64, class string) error {
 func fmtFloat(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) }
 func minFloat(a, b float64) float64 {
 	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxFloat(a, b float64) float64 {
+	if a > b {
 		return a
 	}
 	return b

@@ -48,6 +48,9 @@ type session struct {
 	frameHeight int
 }
 
+const tabletWriteTimeout = 10 * time.Second
+const deliveryRetryInterval = 15 * time.Second
+
 func New(s *store.Store, h *events.Hub, log *slog.Logger) *Gateway {
 	return &Gateway{Store: s, Hub: h, Log: log, Renderer: render.UploadedImage{}, connections: make(map[string]*session)}
 }
@@ -59,6 +62,7 @@ func (g *Gateway) Serve(ctx context.Context, addr string) error {
 	}
 	g.listener = ln
 	g.Log.Info("tablet gateway listening", "address", ln.Addr())
+	go g.retryDeliveries(ctx)
 	go func() {
 		<-ctx.Done()
 		ln.Close()
@@ -92,7 +96,29 @@ func (g *Gateway) Notify(uuid string) {
 	s := g.connections[uuid]
 	g.mu.RUnlock()
 	if s != nil {
+		g.Log.Debug("image delivery notified", "uuid", uuid)
 		go g.deliver(context.Background(), s)
+	}
+}
+
+func (g *Gateway) retryDeliveries(ctx context.Context) {
+	ticker := time.NewTicker(deliveryRetryInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			g.mu.RLock()
+			sessions := make([]*session, 0, len(g.connections))
+			for _, active := range g.connections {
+				sessions = append(sessions, active)
+			}
+			g.mu.RUnlock()
+			for _, active := range sessions {
+				go g.deliver(ctx, active)
+			}
+		}
 	}
 }
 
@@ -260,7 +286,14 @@ func (s *session) advanceSequence(observed uint32) {
 func (s *session) write(data []byte) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	_, err := s.conn.Write(data)
+	if err := s.conn.SetWriteDeadline(time.Now().Add(tabletWriteTimeout)); err != nil {
+		return err
+	}
+	defer s.conn.SetWriteDeadline(time.Time{})
+	n, err := s.conn.Write(data)
+	if err == nil && n != len(data) {
+		err = io.ErrShortWrite
+	}
 	return err
 }
 
@@ -272,21 +305,32 @@ func (g *Gateway) deliver(ctx context.Context, active *session) {
 	}
 	active.deliverMu.Lock()
 	defer active.deliverMu.Unlock()
+	for {
+		if !g.deliverLatest(ctx, active) {
+			return
+		}
+	}
+}
+
+// deliverLatest sends the newest desired assignment. It returns true after a
+// successful send so the caller checks once more for work queued concurrently.
+func (g *Gateway) deliverLatest(ctx context.Context, active *session) bool {
 	active.statusMu.RLock()
 	st := active.status
 	active.statusMu.RUnlock()
 	uuid := st.UUID
 	pending, err := g.Store.Pending(ctx, uuid)
 	if errors.Is(err, sql.ErrNoRows) {
-		return
+		return false
 	}
 	if err != nil {
 		g.Log.Error("loading desired frame", "uuid", uuid, "error", err)
-		return
+		return false
 	}
 	if active.lastSentID == pending.ID {
-		return
+		return false
 	}
+	g.Log.Debug("image delivery starting", "uuid", uuid, "assignment_id", pending.ID, "frame_id", pending.FrameID)
 	frame, err := g.Renderer.Render(ctx, render.Input{Device: render.Device{UUID: uuid, Width: pending.Width, Height: pending.Height}, ContentType: pending.ContentType, Source: pending.Source, Settings: pending.Settings})
 	if err == nil {
 		primitive := changedPrimitive(frame.Packed4Bit, active.lastFrame, pending.Width, pending.Height, active.frameWidth, active.frameHeight)
@@ -304,12 +348,13 @@ func (g *Gateway) deliver(ctx context.Context, active *session) {
 	if err != nil {
 		g.emit(ctx, uuid, "image.failed", map[string]any{"assignment_id": pending.ID, "error": err.Error()})
 		g.Log.Warn("image delivery failed", "uuid", uuid, "error", err)
-		return
+		return false
 	}
 	active.lastSentID = pending.ID
 	active.lastFrame = append(active.lastFrame[:0], frame.Packed4Bit...)
 	active.frameWidth, active.frameHeight = pending.Width, pending.Height
 	g.emit(ctx, uuid, "image.sent", map[string]any{"assignment_id": pending.ID, "frame_id": pending.FrameID})
+	return true
 }
 
 func changedPrimitive(current, previous []byte, width, height, previousWidth, previousHeight int) pv3.ImagePrimitive {
