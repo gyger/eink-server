@@ -83,6 +83,26 @@ Common symptoms:
   design so it is rasterized again, and compare the processed preview. Use
   `smooth` for photographs or artwork that benefits from ordinary antialiasing.
 
+## Configure tablet Wi-Fi over USB
+
+`tools/configure_tablet_wifi.py` provides a Textual terminal UI for writing the
+saved WPA2 network through the tablet's USB serial CLI. It runs on Linux,
+macOS, and Windows with Python 3.10 or newer, Textual, and pyserial:
+
+```sh
+python -m pip install -r tools/requirements-serial.txt
+python tools/configure_tablet_wifi.py
+```
+
+On Windows, the tool lists available COM ports. On Linux, the user must have
+permission to open the selected `/dev/ttyUSB*` or `/dev/serial/by-id/*` device.
+The tablet CLI echoes entered credentials, so the configurator suppresses the
+response to the write command. SSIDs and passwords containing whitespace are
+rejected because quoting or escaping has not been confirmed for this firmware.
+The tool checks the current and saved configuration without displaying the
+credential-bearing responses, persists changes with `flash_save`, and reboots
+unless **Save without rebooting** is selected.
+
 ## Touch logging check
 
 Tap the connected display and inspect the server log. A valid contact produces
