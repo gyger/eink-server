@@ -108,7 +108,9 @@ Opens a Server-Sent Events stream. Event names currently include:
 - `design.rendered`
 
 SVG touch and action events include `touch.tap`, `action.unresolved`,
-`action.started`, `action.succeeded`, and `action.failed`.
+`action.started`, `action.succeeded`, and `action.failed`. Internal widget
+recipients publish `widget.event.unresolved`, `widget.event.succeeded`, or
+`widget.event.failed`.
 
 ## SVG designs and actions
 

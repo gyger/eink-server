@@ -38,14 +38,24 @@ type InteractionMap struct {
 }
 
 type InteractionRect struct {
-	X      int    `json:"x"`
-	Y      int    `json:"y"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
-	Name   string `json:"name,omitempty"`
-	Action string `json:"action,omitempty"`
-	Region string `json:"region,omitempty"`
-	Order  int    `json:"order"`
+	X         int    `json:"x"`
+	Y         int    `json:"y"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Name      string `json:"name,omitempty"`
+	Action    string `json:"action,omitempty"`
+	Region    string `json:"region,omitempty"`
+	Recipient string `json:"recipient,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+	Instance  string `json:"instance,omitempty"`
+	Event     string `json:"event,omitempty"`
+	Order     int    `json:"order"`
+}
+
+type WidgetState struct {
+	Provider string
+	Instance string
+	State    json.RawMessage
 }
 
 type Action struct {
@@ -103,6 +113,9 @@ func (s *Store) DeleteDesign(ctx context.Context, id string) error {
 }
 
 func (s *Store) SetActiveDesign(ctx context.Context, uuid, designID string, svg []byte) error {
+	if _, err := s.DB.ExecContext(ctx, `DELETE FROM widget_states WHERE device_uuid=? AND design_id<>?`, uuid, designID); err != nil {
+		return err
+	}
 	now := nowString()
 	res, err := s.DB.ExecContext(ctx, `INSERT INTO device_designs(device_uuid,design_id,svg,updated_at) SELECT uuid,?,?,? FROM devices WHERE uuid=?
 ON CONFLICT(device_uuid) DO UPDATE SET design_id=excluded.design_id,svg=excluded.svg,dependencies_json='[]',values_hash='',page_id='',updated_at=excluded.updated_at`, designID, svg, now, uuid)
@@ -112,6 +125,50 @@ ON CONFLICT(device_uuid) DO UPDATE SET design_id=excluded.design_id,svg=excluded
 		}
 	}
 	return err
+}
+
+func (s *Store) WidgetStates(ctx context.Context, uuid, designID string) ([]WidgetState, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT provider,instance,state_json FROM widget_states WHERE device_uuid=? AND design_id=?`, uuid, designID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WidgetState
+	for rows.Next() {
+		var v WidgetState
+		var raw string
+		if err := rows.Scan(&v.Provider, &v.Instance, &raw); err != nil {
+			return nil, err
+		}
+		v.State = json.RawMessage(raw)
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) GetWidgetState(ctx context.Context, uuid, designID, provider, instance string) (json.RawMessage, error) {
+	var raw string
+	err := s.DB.QueryRowContext(ctx, `SELECT state_json FROM widget_states WHERE device_uuid=? AND design_id=? AND provider=? AND instance=?`, uuid, designID, provider, instance).Scan(&raw)
+	return json.RawMessage(raw), err
+}
+
+func (s *Store) PutWidgetState(ctx context.Context, uuid, designID, provider, instance string, state json.RawMessage) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO widget_states(device_uuid,design_id,provider,instance,state_json,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(device_uuid,design_id,provider,instance) DO UPDATE SET state_json=excluded.state_json,updated_at=excluded.updated_at`, uuid, designID, provider, instance, string(state), nowString())
+	return err
+}
+
+func (s *Store) DeleteWidgetState(ctx context.Context, uuid, designID, provider, instance string) error {
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM widget_states WHERE device_uuid=? AND design_id=? AND provider=? AND instance=?`, uuid, designID, provider, instance)
+	return err
+}
+
+func (s *Store) ClaimWidgetEvent(ctx context.Context, uuid string, frameID uint32, key string) (bool, error) {
+	res, err := s.DB.ExecContext(ctx, `INSERT OR IGNORE INTO widget_event_consumptions(device_uuid,frame_id,target_key,created_at) VALUES(?,?,?,?)`, uuid, frameID, key, nowString())
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 func (s *Store) ClearActiveDesign(ctx context.Context, uuid string) error {

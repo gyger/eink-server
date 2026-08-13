@@ -30,14 +30,18 @@ var variablePattern = regexp.MustCompile(`\$\{([a-z][a-z0-9_.]*)\}`)
 type Values map[string]string
 
 type Rect struct {
-	X      int    `json:"x"`
-	Y      int    `json:"y"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
-	Name   string `json:"name,omitempty"`
-	Action string `json:"action,omitempty"`
-	Region string `json:"region,omitempty"`
-	Order  int    `json:"order"`
+	X         int    `json:"x"`
+	Y         int    `json:"y"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Name      string `json:"name,omitempty"`
+	Action    string `json:"action,omitempty"`
+	Region    string `json:"region,omitempty"`
+	Recipient string `json:"recipient,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+	Instance  string `json:"instance,omitempty"`
+	Event     string `json:"event,omitempty"`
+	Order     int    `json:"order"`
 }
 
 type Output struct {
@@ -230,6 +234,15 @@ func compileXML(source []byte, width, height int, values Values) ([]byte, Output
 					return nil, out, fmt.Errorf("unknown widget %q", widget)
 				}
 				child.dynamic, child.widget = true, true
+				if attrs["data-navigation"] == "true" {
+					if attrs["id"] == "" {
+						return nil, out, errors.New("navigable calendar requires an id")
+					}
+					if out.Refresh == 0 || out.Refresh > time.Minute {
+						out.Refresh = time.Minute
+					}
+					deps["widget."+attrs["id"]+".month_offset"] = struct{}{}
+				}
 				deps["system.date"] = struct{}{}
 				deps["system.locale"] = struct{}{}
 			}
@@ -239,7 +252,7 @@ func compileXML(source []byte, width, height int, values Values) ([]byte, Output
 					return nil, out, err
 				}
 				r = transformRect(r, child.matrix, viewX, viewY, viewW, viewH, width, height)
-				r.Name, r.Action, r.Region, r.Order = attrs["id"], attrs["data-action"], attrs["data-region"], order
+				r.Name, r.Action, r.Region, r.Recipient, r.Order = attrs["id"], attrs["data-action"], attrs["data-region"], "webhook", order
 				order++
 				if r.Action != "" {
 					out.Actions = append(out.Actions, r)
@@ -256,8 +269,15 @@ func compileXML(source []byte, width, height int, values Values) ([]byte, Output
 				}
 				if child.dynamic {
 					if child.widget {
-						if err := emitCalendar(enc, attrs, values); err != nil {
+						regions, err := emitCalendar(enc, attrs, values)
+						if err != nil {
 							return nil, out, err
+						}
+						for _, region := range regions {
+							region = transformRect(region, child.matrix, viewX, viewY, viewW, viewH, width, height)
+							region.Order = order
+							order++
+							out.Actions = append(out.Actions, region)
 						}
 					} else if err := enc.EncodeToken(xml.CharData(attrs["_dynamic_text"])); err != nil {
 						return nil, out, err
@@ -495,7 +515,9 @@ func transformRect(r Rect, m matrix, vx, vy, vw, vh float64, width, height int) 
 	}
 	scale := math.Min(float64(width)/vw, float64(height)/vh)
 	ox, oy := (float64(width)-vw*scale)/2-vx*scale, (float64(height)-vh*scale)/2-vy*scale
-	return Rect{X: int(math.Floor(minX*scale + ox)), Y: int(math.Floor(minY*scale + oy)), Width: int(math.Ceil((maxX - minX) * scale)), Height: int(math.Ceil((maxY - minY) * scale))}
+	r.X, r.Y = int(math.Floor(minX*scale+ox)), int(math.Floor(minY*scale+oy))
+	r.Width, r.Height = int(math.Ceil((maxX-minX)*scale)), int(math.Ceil((maxY-minY)*scale))
+	return r
 }
 
 func numbers(s string, count int) ([]float64, error) {

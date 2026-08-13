@@ -39,6 +39,7 @@ six-week month grid:
 
 ```svg
 <g data-widget="calendar"
+   id="main-calendar" data-navigation="true"
    data-x="520" data-y="55" data-width="460" data-height="570"
    data-week-start="monday" data-spillover="true"/>
 ```
@@ -48,6 +49,12 @@ spillover is `true` or `false`. The provider emits `calendar-title`,
 `calendar-weekday`, `calendar-day`, `calendar-outside`, `calendar-today`, and
 `calendar-today-text` classes for styling. Calendar widgets depend on the
 tablet-local date and locale, not on the clock text.
+
+Calendar navigation is opt-in with `data-navigation="true"` and requires a
+stable `id`. It adds understated previous/next controls with larger header tap
+regions; tapping the title returns to the current month. Navigation is limited
+to twelve months in either direction and returns to the current month five
+minutes after the last tap.
 
 ## Fonts
 
@@ -80,6 +87,14 @@ Touch dispatch is tied to the frame ID reported by the tablet, so touches made
 during a screen transition use the interaction map for the screen the user
 actually saw. An unregistered action does nothing but is logged and published
 as `action.unresolved` with the action name.
+
+The frame interaction map uses a common recipient model. `data-action` targets
+are delivered to configured webhooks. Widget-generated targets carry a provider,
+instance ID, and event name and are delivered through the registered widget
+handler. Both recipient types use the same transformed hit testing and frame
+correlation. Widget handlers receive opaque persisted JSON state and can request
+a new render; this is the integration boundary intended for future Go and WASM
+providers. Widget targets cannot be declared by ordinary uploaded SVG source.
 
 Webhook actions receive a JSON POST:
 

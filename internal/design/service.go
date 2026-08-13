@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -26,6 +27,23 @@ var NamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 type Notifier interface{ Notify(string) }
 type Connections interface{ IsConnected(string) bool }
 
+type WidgetEvent struct {
+	Provider, Instance, Name     string
+	DeviceUUID, DesignID, PageID string
+	FrameID, X, Y                uint32
+	State                        json.RawMessage
+	Now                          time.Time
+}
+
+type WidgetEventResult struct {
+	State  json.RawMessage
+	Render bool
+}
+
+type WidgetEventHandler interface {
+	HandleEvent(context.Context, WidgetEvent) (WidgetEventResult, error)
+}
+
 type Service struct {
 	Store           *store.Store
 	Hub             *events.Hub
@@ -38,6 +56,7 @@ type Service struct {
 	DefaultDesign   string
 	Compiler        Compiler
 	Now             func() time.Time
+	WidgetHandlers  map[string]WidgetEventHandler
 	renderMu        sync.Map
 }
 
@@ -46,7 +65,7 @@ const builtinStatus = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024
 <text x="250" y="405" text-anchor="middle" font-family="Noto Sans" font-size="154" font-weight="400" data-value="${system.time}">18:30</text>
 <line x1="500" y1="120" x2="500" y2="625" stroke="#b8b8b8" stroke-width="2"/>
 <style>.calendar-title{font-weight:500}.calendar-weekday{font-weight:600}.calendar-outside{fill:#999}.calendar-today{fill:#000}.calendar-today-text{fill:#fff}</style>
-<g data-widget="calendar" data-x="520" data-y="55" data-width="460" data-height="570" data-week-start="monday" data-spillover="true"/>
+<g id="status-calendar" data-widget="calendar" data-navigation="true" data-x="520" data-y="55" data-width="460" data-height="570" data-week-start="monday" data-spillover="true"/>
 <g font-family="Noto Sans" fill="black">
   <text x="45" y="710" font-size="24" font-weight="600" data-value="${device.location}">Location</text>
   <text x="979" y="710" text-anchor="end" font-size="21" font-weight="500" data-value="${device.name} ${device.temperature} °C · Batt ${device.battery}%">Room 20 °C · Batt 98%</text>
@@ -199,6 +218,23 @@ func (s *Service) Render(ctx context.Context, uuid string, force bool) (store.As
 		return store.Assignment{}, err
 	}
 	values := s.Values(device)
+	states, err := s.Store.WidgetStates(ctx, uuid, active.DesignID)
+	if err != nil {
+		return store.Assignment{}, err
+	}
+	for _, state := range states {
+		if state.Provider != "calendar" {
+			continue
+		}
+		var v calendarState
+		if json.Unmarshal(state.State, &v) == nil {
+			if !v.ExpiresAt.IsZero() && !s.now().Before(v.ExpiresAt) {
+				_ = s.Store.DeleteWidgetState(ctx, uuid, active.DesignID, state.Provider, state.Instance)
+				continue
+			}
+			values["widget."+state.Instance+".month_offset"] = strconv.Itoa(v.MonthOffset)
+		}
+	}
 	if !force && active.ValuesHash != "" && store.ValuesHash(values, active.Dependencies) == active.ValuesHash {
 		return store.Assignment{}, nil
 	}
@@ -209,7 +245,7 @@ func (s *Service) Render(ctx context.Context, uuid string, force bool) (store.As
 	hash := store.ValuesHash(values, out.Dependencies)
 	actions := make([]store.InteractionRect, len(out.Actions))
 	for i, region := range out.Actions {
-		actions[i] = store.InteractionRect{X: region.X, Y: region.Y, Width: region.Width, Height: region.Height, Name: region.Name, Action: region.Action, Region: region.Region, Order: region.Order}
+		actions[i] = store.InteractionRect{X: region.X, Y: region.Y, Width: region.Width, Height: region.Height, Name: region.Name, Action: region.Action, Region: region.Region, Recipient: region.Recipient, Provider: region.Provider, Instance: region.Instance, Event: region.Event, Order: region.Order}
 	}
 	assignment, err := s.Store.QueueDesignFrame(ctx, uuid, active.DesignID, out.PageID, out.PNG, actions)
 	if err != nil {
@@ -284,11 +320,82 @@ func (s *Service) Touch(ctx context.Context, uuid string, frameID, x, y, rawX, r
 	sort.SliceStable(m.Actions, func(i, j int) bool { return m.Actions[i].Order > m.Actions[j].Order })
 	for _, region := range m.Actions {
 		if int(x) >= region.X && int(y) >= region.Y && int(x) < region.X+region.Width && int(y) < region.Y+region.Height {
+			if region.Recipient == "widget" {
+				s.handleWidgetEvent(ctx, uuid, frameID, x, y, m, region)
+				return
+			}
 			s.Log.Info("touch action", "uuid", uuid, "frame_id", frameID, "action", region.Action, "x", x, "y", y)
 			s.Actions.Submit(ctx, action.Invocation{Action: region.Action, DeviceUUID: uuid, DesignID: m.DesignID, PageID: m.PageID, FrameID: frameID, ElementID: region.Name, Region: region.Region, X: x, Y: y, Timestamp: time.Now().UTC()})
 			return
 		}
 	}
+}
+
+type calendarState struct {
+	MonthOffset int       `json:"month_offset"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+func (s *Service) handleWidgetEvent(ctx context.Context, uuid string, frameID, x, y uint32, m store.InteractionMap, region store.InteractionRect) {
+	key := region.Provider + ":" + region.Instance
+	ok, err := s.Store.ClaimWidgetEvent(ctx, uuid, frameID, key)
+	if err != nil || !ok {
+		return
+	}
+	handler := s.WidgetHandlers[region.Provider]
+	if handler == nil && region.Provider == "calendar" {
+		handler = calendarEventHandler{}
+	}
+	if handler == nil {
+		s.emit(ctx, uuid, "widget.event.unresolved", map[string]any{"provider": region.Provider, "instance": region.Instance, "event": region.Event, "frame_id": frameID})
+		return
+	}
+	stored, _ := s.Store.GetWidgetState(ctx, uuid, m.DesignID, region.Provider, region.Instance)
+	result, err := handler.HandleEvent(ctx, WidgetEvent{Provider: region.Provider, Instance: region.Instance, Name: region.Event, DeviceUUID: uuid, DesignID: m.DesignID, PageID: m.PageID, FrameID: frameID, X: x, Y: y, State: stored, Now: s.now()})
+	if err != nil {
+		s.emit(ctx, uuid, "widget.event.failed", map[string]any{"provider": region.Provider, "instance": region.Instance, "event": region.Event, "frame_id": frameID, "error": err.Error()})
+		return
+	}
+	if err := s.Store.PutWidgetState(ctx, uuid, m.DesignID, region.Provider, region.Instance, result.State); err != nil {
+		return
+	}
+	if !result.Render {
+		return
+	}
+	assignment, err := s.Render(ctx, uuid, true)
+	if err != nil {
+		s.emit(ctx, uuid, "widget.event.failed", map[string]any{"provider": region.Provider, "instance": region.Instance, "event": region.Event, "frame_id": frameID, "error": err.Error()})
+		return
+	}
+	s.emit(ctx, uuid, "widget.event.succeeded", map[string]any{"provider": region.Provider, "instance": region.Instance, "event": region.Event, "frame_id": frameID, "assignment_id": assignment.ID, "new_frame_id": assignment.FrameID, "x": x, "y": y})
+}
+
+type calendarEventHandler struct{}
+
+func (calendarEventHandler) HandleEvent(_ context.Context, event WidgetEvent) (WidgetEventResult, error) {
+	state := calendarState{}
+	if len(event.State) != 0 {
+		_ = json.Unmarshal(event.State, &state)
+	}
+	switch event.Name {
+	case "previous":
+		state.MonthOffset--
+	case "next":
+		state.MonthOffset++
+	case "today":
+		state.MonthOffset = 0
+	default:
+		return WidgetEventResult{}, fmt.Errorf("unknown calendar event %q", event.Name)
+	}
+	if state.MonthOffset < -12 {
+		state.MonthOffset = -12
+	}
+	if state.MonthOffset > 12 {
+		state.MonthOffset = 12
+	}
+	state.ExpiresAt = event.Now.Add(5 * time.Minute)
+	raw, err := json.Marshal(state)
+	return WidgetEventResult{State: raw, Render: true}, err
 }
 
 func (s *Service) Metadata(ctx context.Context, d store.Design) (Output, error) {

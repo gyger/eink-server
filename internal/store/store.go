@@ -26,7 +26,7 @@ type Store struct {
 // SchemaVersion is the newest database schema understood by this binary.
 // Keep this migration editable until the first release. After release, schema
 // changes must append a new numbered migration instead.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 type Device struct {
 	UUID         string             `json:"uuid"`
@@ -169,6 +169,17 @@ CREATE TABLE IF NOT EXISTS assignment_interactions (
 CREATE TABLE IF NOT EXISTS actions (
  name TEXT PRIMARY KEY, source TEXT NOT NULL, kind TEXT NOT NULL, url TEXT NOT NULL, headers_json TEXT NOT NULL DEFAULT '{}',
  timeout_ms INTEGER NOT NULL DEFAULT 5000, updated_at TEXT NOT NULL
+);
+`,
+	2: `
+CREATE TABLE IF NOT EXISTS widget_states (
+ device_uuid TEXT NOT NULL REFERENCES devices(uuid), design_id TEXT NOT NULL, provider TEXT NOT NULL, instance TEXT NOT NULL,
+ state_json TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL,
+ PRIMARY KEY(device_uuid,design_id,provider,instance)
+);
+CREATE TABLE IF NOT EXISTS widget_event_consumptions (
+ device_uuid TEXT NOT NULL, frame_id INTEGER NOT NULL, target_key TEXT NOT NULL, created_at TEXT NOT NULL,
+ PRIMARY KEY(device_uuid,frame_id,target_key)
 );
 `,
 }

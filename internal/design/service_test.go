@@ -94,6 +94,48 @@ func TestDynamicRenderAndFrameCorrelatedAction(t *testing.T) {
 	}
 }
 
+func TestCalendarWidgetTapUpdatesStateAndRendersOncePerFrame(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s, err := store.Open(t.TempDir() + "/design.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	uuid := "00112233-4455-6677-8899-aabbccddeeff"
+	if _, err := s.UpsertStatus(ctx, pv3.Status{UUID: uuid, Width: 700, Height: 600, Fields: map[uint32]uint32{}}); err != nil {
+		t.Fatal(err)
+	}
+	hub := events.New()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	notify := &fakeNotifier{}
+	service := &Service{Store: s, Hub: hub, Log: log, Actions: action.New(ctx, s, hub, log), Notifier: notify, SystemName: "Test", DesignDirectory: t.TempDir(), Now: func() time.Time { return time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC) }}
+	if err := service.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 600"><g id="main" data-widget="calendar" data-navigation="true" data-x="0" data-y="0" data-width="700" data-height="600"/></svg>`)
+	assignment, err := service.AssignInline(ctx, uuid, svg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.Touch(ctx, uuid, assignment.FrameID, 650, 30, 49, 569)
+	raw, err := s.GetWidgetState(ctx, uuid, "inline:"+uuid, "calendar", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state calendarState
+	if err := json.Unmarshal(raw, &state); err != nil || state.MonthOffset != 1 {
+		t.Fatalf("state=%+v err=%v", state, err)
+	}
+	if len(notify.uuids) != 2 {
+		t.Fatalf("notifications=%v", notify.uuids)
+	}
+	service.Touch(ctx, uuid, assignment.FrameID, 650, 30, 49, 569)
+	if len(notify.uuids) != 2 {
+		t.Fatalf("duplicate tap rendered: notifications=%v", notify.uuids)
+	}
+}
+
 func TestValuesUseDeviceTimezoneAcrossDST(t *testing.T) {
 	service := &Service{SystemName: "Test"}
 	device := store.Device{UUID: "00112233-4455-6677-8899-aabbccddeeff", Timezone: "Europe/Berlin", Locale: "de-DE"}

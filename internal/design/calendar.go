@@ -18,36 +18,73 @@ var calendarLocales = map[string]calendarLocale{
 	"en-GB": {months: [12]string{"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"}, weekdays: [7]string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}},
 }
 
-func emitCalendar(enc *xml.Encoder, attrs map[string]string, values Values) error {
+func emitCalendar(enc *xml.Encoder, attrs map[string]string, values Values) ([]Rect, error) {
 	date, err := time.Parse("2006-01-02", values["system.date"])
 	if err != nil {
-		return errors.New("calendar requires system.date in YYYY-MM-DD format")
+		return nil, errors.New("calendar requires system.date in YYYY-MM-DD format")
 	}
+	today := date
 	locale, ok := calendarLocales[values["system.locale"]]
 	if !ok {
-		return fmt.Errorf("unsupported calendar locale %q", values["system.locale"])
+		return nil, fmt.Errorf("unsupported calendar locale %q", values["system.locale"])
 	}
 	x, y, w, h, err := calendarGeometry(attrs)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	weekStart := attrs["data-week-start"]
 	if weekStart == "" {
 		weekStart = "monday"
 	}
 	if weekStart != "monday" && weekStart != "sunday" {
-		return errors.New("calendar data-week-start must be monday or sunday")
+		return nil, errors.New("calendar data-week-start must be monday or sunday")
 	}
 	spillover := attrs["data-spillover"]
 	if spillover == "" {
 		spillover = "true"
 	}
 	if spillover != "true" && spillover != "false" {
-		return errors.New("calendar data-spillover must be true or false")
+		return nil, errors.New("calendar data-spillover must be true or false")
+	}
+	navigation := attrs["data-navigation"]
+	if navigation != "" && navigation != "true" && navigation != "false" {
+		return nil, errors.New("calendar data-navigation must be true or false")
+	}
+	monthOffset := 0
+	if navigation == "true" {
+		monthOffset, err = strconv.Atoi(values["widget."+attrs["id"]+".month_offset"])
+		if values["widget."+attrs["id"]+".month_offset"] != "" && err != nil {
+			return nil, errors.New("calendar month offset must be an integer")
+		}
+		if monthOffset < -12 || monthOffset > 12 {
+			return nil, errors.New("calendar month offset outside supported range")
+		}
+		date = date.AddDate(0, monthOffset, 0)
 	}
 
 	if err := textToken(enc, x+w/2, y+h*.08, locale.months[date.Month()-1]+" "+strconv.Itoa(date.Year()), "calendar-title", "middle", h*.065, "black"); err != nil {
-		return err
+		return nil, err
+	}
+	var regions []Rect
+	if navigation == "true" {
+		base := Rect{Recipient: "widget", Provider: "calendar", Instance: attrs["id"]}
+		prev, today, next := base, base, base
+		prev.X, prev.Y, prev.Width, prev.Height, prev.Event = int(x), int(y), int(w*.2), int(h*.14), "previous"
+		today.X, today.Y, today.Width, today.Height, today.Event = int(x+w*.2), int(y), int(w*.6), int(h*.14), "today"
+		next.X, next.Y, next.Width, next.Height, next.Event = int(x+w*.8), int(y), int(w*.2), int(h*.14), "next"
+		if monthOffset > -12 {
+			if err := textToken(enc, x+w*.08, y+h*.08, "‹", "calendar-navigation calendar-previous", "middle", h*.052, "black"); err != nil {
+				return nil, err
+			}
+			regions = append(regions, prev)
+		}
+		regions = append(regions, today)
+		if monthOffset < 12 {
+			if err := textToken(enc, x+w*.92, y+h*.08, "›", "calendar-navigation calendar-next", "middle", h*.052, "black"); err != nil {
+				return nil, err
+			}
+			regions = append(regions, next)
+		}
 	}
 	colW, top, rowH := w/7, y+h*.20, h*.13
 	for col := 0; col < 7; col++ {
@@ -56,7 +93,7 @@ func emitCalendar(enc *xml.Encoder, attrs map[string]string, values Values) erro
 			idx = (col + 6) % 7
 		}
 		if err := textToken(enc, x+(float64(col)+.5)*colW, y+h*.17, locale.weekdays[idx], "calendar-weekday", "middle", h*.035, "black"); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	first := time.Date(date.Year(), date.Month(), 1, 12, 0, 0, 0, time.UTC)
@@ -74,12 +111,12 @@ func emitCalendar(enc *xml.Encoder, attrs map[string]string, values Values) erro
 		}
 		col, row := cell%7, cell/7
 		cx, cy := x+(float64(col)+.5)*colW, top+(float64(row)+.5)*rowH
-		isToday := day.Equal(first.AddDate(0, 0, date.Day()-1))
+		isToday := day.Year() == today.Year() && day.Month() == today.Month() && day.Day() == today.Day()
 		if isToday {
 			// SVG text uses a baseline rather than a visual center. Position the
 			// circle around the approximate cap-height center of the day number.
 			if err := circleToken(enc, cx, cy-dayFontSize*.34, minFloat(colW*.32, rowH*.32), "calendar-today"); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		class := "calendar-day"
@@ -96,10 +133,10 @@ func emitCalendar(enc *xml.Encoder, attrs map[string]string, values Values) erro
 			fill = "white"
 		}
 		if err := textToken(enc, cx, cy, strconv.Itoa(day.Day()), class, "middle", dayFontSize, fill); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return regions, nil
 }
 
 func calendarGeometry(attrs map[string]string) (float64, float64, float64, float64, error) {

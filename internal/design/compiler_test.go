@@ -3,6 +3,7 @@ package design
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRenderDynamicSVGAndMetadata(t *testing.T) {
@@ -30,6 +31,24 @@ func TestCalendarWidgetAndRefresh(t *testing.T) {
 	}
 	clean, _, err := compileXML(svg, 700, 600, Values{"system.date": "2024-02-29", "system.locale": "de-DE"})
 	if err != nil || !strings.Contains(string(clean), "Februar 2024") || strings.Count(string(clean), `calendar-day`) != 42 || !strings.Contains(string(clean), `class="calendar-day calendar-today-text" text-anchor="middle" font-size="25.80" fill="white"`) || !strings.Contains(string(clean), `class="calendar-day calendar-outside" text-anchor="middle" font-size="25.80" fill="#999999"`) || !strings.Contains(string(clean), `cy="462.23"`) {
+		t.Fatalf("calendar output invalid: err=%v xml=%s", err, clean)
+	}
+}
+
+func TestNavigableCalendarEmitsWidgetTargets(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 600"><g id="main" data-widget="calendar" data-navigation="true" data-x="0" data-y="0" data-width="700" data-height="600"/></svg>`)
+	out, err := (Compiler{}).Render(svg, 700, 600, Values{"system.date": "2026-08-13", "system.locale": "en-GB", "widget.main.month_offset": "1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Refresh != time.Minute || len(out.Actions) != 3 {
+		t.Fatalf("refresh=%v actions=%+v", out.Refresh, out.Actions)
+	}
+	if out.Actions[0].Recipient != "widget" || out.Actions[0].Provider != "calendar" || out.Actions[0].Instance != "main" || out.Actions[0].Event != "previous" {
+		t.Fatalf("target=%+v", out.Actions[0])
+	}
+	clean, _, err := compileXML(svg, 700, 600, Values{"system.date": "2026-08-13", "system.locale": "en-GB", "widget.main.month_offset": "1"})
+	if err != nil || !strings.Contains(string(clean), "September 2026") || !strings.Contains(string(clean), "calendar-previous") {
 		t.Fatalf("calendar output invalid: err=%v xml=%s", err, clean)
 	}
 }
