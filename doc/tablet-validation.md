@@ -94,6 +94,12 @@ python -m pip install -r tools/requirements-serial.txt
 python tools/configure_tablet_wifi.py
 ```
 
+With `uv` and `just`, no manual environment setup is needed:
+
+```sh
+just configure-wifi
+```
+
 On Windows, the tool lists available COM ports. On Linux, the user must have
 permission to open the selected `/dev/ttyUSB*` or `/dev/serial/by-id/*` device.
 The tablet CLI echoes entered credentials, so the configurator suppresses the

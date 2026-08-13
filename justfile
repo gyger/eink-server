@@ -29,3 +29,7 @@ build-linux: build-linux-amd64 build-linux-arm64
 # Run the complete test suite.
 test:
     go test ./...
+
+# Launch the interactive tablet Wi-Fi configurator in an ephemeral uv environment.
+configure-wifi:
+    uv run --no-project --with-requirements tools/requirements-serial.txt tools/configure_tablet_wifi.py
