@@ -35,6 +35,20 @@ go run ./cmd/eink-server \
 The HTTP server, UI embedding, image codecs, CRC32, logging, and TCP handling use
 the Go standard library.
 
+## Builds
+
+The `justfile` provides native and static Linux release builds:
+
+```sh
+just build                 # dist/eink-server for the current platform
+just build-linux-amd64     # dist/eink-server-linux-amd64
+just build-linux-arm64     # dist/eink-server-linux-arm64
+just build-linux           # both Linux architectures
+```
+
+The Linux recipes disable CGO, set the target explicitly, and use `-trimpath`.
+The embedded fonts, UI, and built-in designs remain included in each binary.
+
 ## Tests and evidence
 
 `internal/pv3` tests use byte-level records derived from captured traffic. They
