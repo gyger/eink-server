@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import time
 
 try:
@@ -107,6 +108,15 @@ class WifiConfigurator(App[None]):
             yield Input(placeholder="Password", password=True, id="password")
             yield Label("Repeat password")
             yield Input(placeholder="Repeat password", password=True, id="password-repeat")
+            yield Label("Server IPv4 address (optional)")
+            yield Input(placeholder="Leave blank to keep the current server", id="server-ip")
+            yield Label("Server TCP port")
+            yield Input(value="11113", placeholder="11113", type="integer", id="server-port")
+            yield Checkbox(
+                "Disable application-level outbound encryption",
+                value=True,
+                id="disable-encryption",
+            )
             yield Checkbox("Save without rebooting", id="no-reboot")
             yield Static("", id="status")
             yield RichLog(id="log", markup=True, wrap=True)
@@ -155,6 +165,8 @@ class WifiConfigurator(App[None]):
         ssid = self.query_one("#ssid", Input).value
         password = self.query_one("#password", Input).value
         repeated = self.query_one("#password-repeat", Input).value
+        server_ip = self.query_one("#server-ip", Input).value.strip()
+        server_port_text = self.query_one("#server-port", Input).value.strip()
         try:
             if port_value is Select.BLANK:
                 raise ValueError("Select a serial port.")
@@ -162,16 +174,46 @@ class WifiConfigurator(App[None]):
             password = validate_cli_token("Password", password)
             if password != repeated:
                 raise ValueError("Passwords do not match.")
+            server_port: int | None = None
+            if server_ip:
+                try:
+                    parsed_ip = ipaddress.ip_address(server_ip)
+                except ValueError as exc:
+                    raise ValueError("Server address must be a valid IPv4 address.") from exc
+                if parsed_ip.version != 4:
+                    raise ValueError("Server address must be IPv4; this tablet command has only been verified with IPv4.")
+                if not server_port_text:
+                    raise ValueError("Enter a server TCP port.")
+                server_port = int(server_port_text)
+                if not 1 <= server_port <= 65535:
+                    raise ValueError("Server TCP port must be between 1 and 65535.")
         except ValueError as exc:
             self.set_status(str(exc), error=True)
             return
         self.query_one("#write", Button).disabled = True
         self.query_one("#log", RichLog).clear()
         self.set_status("Writing configuration…")
-        self.configure(str(port_value), ssid, password, self.query_one("#no-reboot", Checkbox).value)
+        self.configure(
+            str(port_value),
+            ssid,
+            password,
+            server_ip or None,
+            server_port,
+            self.query_one("#disable-encryption", Checkbox).value,
+            self.query_one("#no-reboot", Checkbox).value,
+        )
 
     @work(thread=True, exclusive=True)
-    def configure(self, port_name: str, ssid: str, password: str, no_reboot: bool) -> None:
+    def configure(
+        self,
+        port_name: str,
+        ssid: str,
+        password: str,
+        server_ip: str | None,
+        server_port: int | None,
+        disable_encryption: bool,
+        no_reboot: bool,
+    ) -> None:
         def report(message: str) -> None:
             self.call_from_thread(self.log_line, message)
 
@@ -194,10 +236,26 @@ class WifiConfigurator(App[None]):
                 exchange(port, "wifi_conf_get")
                 report(f"Writing SSID [bold]{ssid}[/] with WPA2-PSK (password and response hidden)")
                 exchange(port, f"wifi_conf_set {ssid} {password} wpa2 0")
+                if server_ip is not None and server_port is not None:
+                    report(f"Writing server endpoint [bold]{server_ip}:{server_port}[/]")
+                    exchange(port, f"server_tcp_set {server_ip} {server_port}")
+                if disable_encryption:
+                    report("Disabling application-level outbound encryption")
+                    exchange(port, "encryption_mode_set 0")
                 report("Persisting settings to flash")
                 exchange(port, "flash_save", quiet=1.0)
                 report("Reading saved configuration (response hidden because it may contain credentials)")
                 exchange(port, "wifi_conf_get")
+                if server_ip is not None:
+                    report("Reading saved server endpoint")
+                    response = exchange(port, "server_tcp_get").decode(
+                        "utf-8", errors="backslashreplace"
+                    )
+                    if response.strip():
+                        report(response.strip())
+                if disable_encryption:
+                    report("Checking saved encryption configuration (response hidden because it may contain key material)")
+                    exchange(port, "encryption_config_get")
                 if not no_reboot:
                     report("Rebooting tablet")
                     exchange(port, "reboot", quiet=0.2)

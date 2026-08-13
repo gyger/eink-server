@@ -108,6 +108,12 @@ rejected because quoting or escaping has not been confirmed for this firmware.
 The tool checks the current and saved configuration without displaying the
 credential-bearing responses, persists changes with `flash_save`, and reboots
 unless **Save without rebooting** is selected.
+Enter a server IPv4 address and TCP port to update the tablet endpoint with
+`server_tcp_set`; leave the address blank to preserve the existing endpoint.
+The default-enabled encryption option sends `encryption_mode_set 0`, disabling
+application-level outbound protocol encryption for the self-hosted server. It
+does not alter the independently encrypted bootloader protocol. Clearing the
+option preserves the tablet's current encryption configuration.
 
 ## Touch logging check
 
