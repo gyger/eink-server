@@ -17,3 +17,12 @@ use_system_fonts = true
 # timeout = "5s"
 # [actions.example.headers]
 # Authorization = "Bearer secret"
+
+# [widgets.weather]
+# module = "./widgets/weather.wasm"
+# allowed_hosts = ["api.example.com"]
+# timeout = "5s"
+# max_memory_pages = 1024
+# max_http_response_bytes = 1048576
+# [widgets.weather.config]
+# api_key = "secret"

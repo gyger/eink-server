@@ -20,6 +20,7 @@ import (
 	"eink-server/internal/httpapi"
 	"eink-server/internal/imageproc"
 	"eink-server/internal/store"
+	"eink-server/internal/widget"
 )
 
 func main() {
@@ -98,7 +99,12 @@ func main() {
 		fatal(log, "loading configured actions", err)
 	}
 	runner := action.New(ctx, db, hub, log)
-	designs := &design.Service{Store: db, Hub: hub, Log: log, Actions: runner, Notifier: gw, Connections: gw, SystemName: cfg.SystemName, DesignDirectory: cfg.DesignDirectory, DefaultDesign: cfg.DefaultDesign}
+	widgetRuntime, err := widget.New(ctx, filepath.Dir(*configPath), cfg.Widgets, map[string][]byte{"departures": widget.DeparturesWASM})
+	if err != nil {
+		fatal(log, "loading widgets", err)
+	}
+	defer widgetRuntime.Close(context.Background())
+	designs := &design.Service{Store: db, Hub: hub, Log: log, Actions: runner, Notifier: gw, Connections: gw, SystemName: cfg.SystemName, DesignDirectory: cfg.DesignDirectory, DefaultDesign: cfg.DefaultDesign, Widgets: widgetRuntime}
 	if err := designs.Init(ctx); err != nil {
 		fatal(log, "loading designs", err)
 	}

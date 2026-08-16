@@ -30,6 +30,11 @@ build-linux: build-linux-amd64 build-linux-arm64
 test:
     go test ./...
 
+# Rust 1.97.1; extism-pdk 1.4.1.
+build-departures:
+    cd plugins/departures && cargo build --locked --release --target wasm32-wasip1
+    install -m 0644 plugins/departures/target/wasm32-wasip1/release/eink_departures_widget.wasm internal/widget/departures.wasm
+
 # Launch the interactive tablet Wi-Fi configurator in an ephemeral uv environment.
 configure-wifi:
     uv run --no-project --with-requirements tools/requirements-serial.txt tools/configure_tablet_wifi.py

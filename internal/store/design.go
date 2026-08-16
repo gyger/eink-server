@@ -113,9 +113,6 @@ func (s *Store) DeleteDesign(ctx context.Context, id string) error {
 }
 
 func (s *Store) SetActiveDesign(ctx context.Context, uuid, designID string, svg []byte) error {
-	if _, err := s.DB.ExecContext(ctx, `DELETE FROM widget_states WHERE device_uuid=? AND design_id<>?`, uuid, designID); err != nil {
-		return err
-	}
 	now := nowString()
 	res, err := s.DB.ExecContext(ctx, `INSERT INTO device_designs(device_uuid,design_id,svg,updated_at) SELECT uuid,?,?,? FROM devices WHERE uuid=?
 ON CONFLICT(device_uuid) DO UPDATE SET design_id=excluded.design_id,svg=excluded.svg,dependencies_json='[]',values_hash='',page_id='',updated_at=excluded.updated_at`, designID, svg, now, uuid)

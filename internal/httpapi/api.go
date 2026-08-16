@@ -43,6 +43,9 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/v1/devices/{uuid}/image", a.putImage)
 	mux.HandleFunc("PUT /api/v1/devices/{uuid}/design", a.assignDesign)
 	mux.HandleFunc("DELETE /api/v1/devices/{uuid}/design", a.clearDesign)
+	mux.HandleFunc("GET /api/v1/devices/{uuid}/widgets", a.widgets)
+	mux.HandleFunc("PUT /api/v1/devices/{uuid}/widgets/{instance}", a.putWidget)
+	mux.HandleFunc("DELETE /api/v1/devices/{uuid}/widgets/{instance}", a.resetWidget)
 	mux.HandleFunc("GET /api/v1/designs", a.listDesigns)
 	mux.HandleFunc("GET /api/v1/designs/{id}", a.getDesign)
 	mux.HandleFunc("PUT /api/v1/designs/{name}", a.putDesign)
@@ -364,14 +367,15 @@ func contentTypeFromHeader(h *multipart.FileHeader) string {
 }
 
 type designView struct {
-	ID         string        `json:"id"`
-	Name       string        `json:"name"`
-	Source     string        `json:"source"`
-	PageID     string        `json:"page_id,omitempty"`
-	Actions    []design.Rect `json:"actions"`
-	Regions    []design.Rect `json:"regions"`
-	DependsOn  []string      `json:"depends_on"`
-	Unresolved []string      `json:"unresolved_actions,omitempty"`
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`
+	Source     string          `json:"source"`
+	PageID     string          `json:"page_id,omitempty"`
+	Actions    []design.Rect   `json:"actions"`
+	Regions    []design.Rect   `json:"regions"`
+	DependsOn  []string        `json:"depends_on"`
+	Unresolved []string        `json:"unresolved_actions,omitempty"`
+	Widgets    []design.Widget `json:"widgets"`
 }
 
 func (a *API) designView(ctx context.Context, d store.Design) (designView, error) {
@@ -379,7 +383,7 @@ func (a *API) designView(ctx context.Context, d store.Design) (designView, error
 	if err != nil {
 		return designView{}, err
 	}
-	view := designView{ID: d.ID, Name: d.Name, Source: d.Source, PageID: meta.PageID, Actions: meta.Actions, Regions: meta.Regions, DependsOn: meta.Dependencies}
+	view := designView{ID: d.ID, Name: d.Name, Source: d.Source, PageID: meta.PageID, Actions: meta.Actions, Regions: meta.Regions, DependsOn: meta.Dependencies, Widgets: meta.Widgets}
 	if view.Actions == nil {
 		view.Actions = []design.Rect{}
 	}
@@ -400,6 +404,56 @@ func (a *API) designView(ctx context.Context, d store.Design) (designView, error
 		}
 	}
 	return view, nil
+}
+
+func (a *API) widgets(w http.ResponseWriter, r *http.Request) {
+	items, err := a.Designs.ActiveWidgets(r.Context(), r.PathValue("uuid"))
+	if errors.Is(err, sql.ErrNoRows) {
+		problem(w, 404, "not_found", "unknown device or active design")
+		return
+	}
+	if err != nil {
+		problem(w, 500, "widget_error", err.Error())
+		return
+	}
+	if items == nil {
+		items = []design.WidgetView{}
+	}
+	writeJSON(w, 200, items)
+}
+func (a *API) putWidget(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Config map[string]string `json:"config"`
+	}
+	if decodeJSON(w, r, &req) != nil {
+		return
+	}
+	if req.Config == nil {
+		problem(w, 400, "invalid_widget_config", "config is required")
+		return
+	}
+	assignment, err := a.Designs.PutWidgetConfig(r.Context(), r.PathValue("uuid"), r.PathValue("instance"), req.Config)
+	if errors.Is(err, sql.ErrNoRows) {
+		problem(w, 404, "widget_not_found", "unknown widget instance")
+		return
+	}
+	if err != nil {
+		problem(w, 400, "widget_render_failed", err.Error())
+		return
+	}
+	writeJSON(w, 202, assignment)
+}
+func (a *API) resetWidget(w http.ResponseWriter, r *http.Request) {
+	assignment, err := a.Designs.ResetWidgetConfig(r.Context(), r.PathValue("uuid"), r.PathValue("instance"))
+	if errors.Is(err, sql.ErrNoRows) {
+		problem(w, 404, "widget_not_found", "unknown widget instance")
+		return
+	}
+	if err != nil {
+		problem(w, 400, "widget_render_failed", err.Error())
+		return
+	}
+	writeJSON(w, 202, assignment)
 }
 
 func (a *API) listDesigns(w http.ResponseWriter, r *http.Request) {

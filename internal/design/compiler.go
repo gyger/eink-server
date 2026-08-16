@@ -2,6 +2,7 @@ package design
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"image/draw"
 	"image/png"
 	"io"
+	"maps"
 	"math"
 	"regexp"
 	"sort"
@@ -51,6 +53,37 @@ type Output struct {
 	Dependencies []string      `json:"dependencies"`
 	PageID       string        `json:"page_id"`
 	Refresh      time.Duration `json:"refresh"`
+	Widgets      []Widget      `json:"widgets"`
+}
+
+type Widget struct {
+	Instance string            `json:"instance"`
+	Provider string            `json:"provider"`
+	X        int               `json:"x"`
+	Y        int               `json:"y"`
+	Width    int               `json:"width"`
+	Height   int               `json:"height"`
+	Defaults map[string]string `json:"defaults"`
+}
+
+type WidgetInput struct {
+	Version  string            `json:"version"`
+	Instance string            `json:"instance"`
+	Viewport WidgetViewport    `json:"viewport"`
+	Now      string            `json:"now"`
+	Timezone string            `json:"timezone"`
+	Locale   string            `json:"locale"`
+	Config   map[string]string `json:"config"`
+}
+
+type WidgetViewport struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+type WidgetRenderer interface {
+	Registered(string) bool
+	Render(context.Context, string, WidgetInput) ([]byte, error)
 }
 
 type Compiler struct{}
@@ -60,7 +93,14 @@ func (Compiler) Render(source []byte, width, height int, values Values) (Output,
 }
 
 type RenderOptions struct {
-	Smooth bool
+	Smooth       bool
+	Context      context.Context
+	Widgets      WidgetRenderer
+	WidgetConfig map[string]map[string]string
+	Now          time.Time
+	Timezone     string
+	Locale       string
+	MetadataOnly bool
 }
 
 func (Compiler) RenderWithOptions(source []byte, width, height int, values Values, options RenderOptions) (Output, error) {
@@ -73,7 +113,7 @@ func (Compiler) RenderWithOptions(source []byte, width, height int, values Value
 	if width <= 0 || height <= 0 {
 		return Output{}, errors.New("invalid output dimensions")
 	}
-	clean, meta, err := compileXML(source, width, height, values)
+	clean, meta, err := compileXMLWithOptions(source, width, height, values, options)
 	if err != nil {
 		return Output{}, err
 	}
@@ -117,6 +157,76 @@ func parseCanvasSVG(source []byte) (parsed *canvas.Canvas, err error) {
 	return canvas.ParseSVG(bytes.NewReader(source))
 }
 
+const MaxWidgetOutputBytes = 256 << 10
+
+func encodeWidgetFragment(enc *xml.Encoder, source []byte) error {
+	if len(source) == 0 || len(source) > MaxWidgetOutputBytes {
+		return fmt.Errorf("widget output must be between 1 byte and %d bytes", MaxWidgetOutputBytes)
+	}
+	dec := xml.NewDecoder(bytes.NewReader(source))
+	dec.Strict = true
+	depth, roots := 0, 0
+	for {
+		tok, err := dec.Token()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("malformed SVG fragment: %w", err)
+		}
+		switch t := tok.(type) {
+		case xml.Directive:
+			return errors.New("SVG directives and document types are not allowed")
+		case xml.StartElement:
+			if depth == 0 {
+				roots++
+				if strings.ToLower(t.Name.Local) != "g" {
+					return errors.New("widget output root must be g")
+				}
+			}
+			name := strings.ToLower(t.Name.Local)
+			if forbiddenElement(name) {
+				return fmt.Errorf("SVG element %q is not allowed", name)
+			}
+			if err := validateAttrs(t.Attr); err != nil {
+				return err
+			}
+			attrs := attrsMap(t.Attr)
+			if attrs["data-widget"] != "" {
+				return errors.New("nested widgets are not allowed")
+			}
+			if attrs["data-action"] != "" || attrs["data-region"] != "" {
+				return errors.New("plugin-generated actions are not allowed")
+			}
+			t.Attr = stripDataAttrs(t.Attr)
+			if err := enc.EncodeToken(t); err != nil {
+				return err
+			}
+			depth++
+		case xml.EndElement:
+			depth--
+			if depth < 0 {
+				return errors.New("malformed SVG fragment")
+			}
+			if err := enc.EncodeToken(t); err != nil {
+				return err
+			}
+		case xml.CharData:
+			if err := enc.EncodeToken(t); err != nil {
+				return err
+			}
+		case xml.Comment:
+			// Discard comments from untrusted module output.
+		default:
+			return errors.New("unsupported SVG fragment content")
+		}
+	}
+	if roots != 1 || depth != 0 {
+		return errors.New("widget output must contain exactly one g")
+	}
+	return nil
+}
+
 type matrix [6]float64
 
 var identity = matrix{1, 0, 0, 1, 0, 0}
@@ -138,6 +248,10 @@ type state struct {
 }
 
 func compileXML(source []byte, width, height int, values Values) ([]byte, Output, error) {
+	return compileXMLWithOptions(source, width, height, values, RenderOptions{})
+}
+
+func compileXMLWithOptions(source []byte, width, height int, values Values, options RenderOptions) ([]byte, Output, error) {
 	dec := xml.NewDecoder(bytes.NewReader(source))
 	dec.Strict = true
 	var buf bytes.Buffer
@@ -148,6 +262,7 @@ func compileXML(source []byte, width, height int, values Values) ([]byte, Output
 	rootSeen, firstPage := false, false
 	var viewX, viewY, viewW, viewH float64
 	order := 0
+	widgetIDs := map[string]bool{}
 	for {
 		tok, err := dec.Token()
 		if errors.Is(err, io.EOF) {
@@ -230,11 +345,35 @@ func compileXML(source []byte, width, height int, values Values) ([]byte, Output
 				if name != "g" {
 					return nil, out, errors.New("data-widget is only supported on g elements")
 				}
-				if widget != "calendar" {
+				if widget != "calendar" && widget != "departures" && (options.Widgets == nil || !options.Widgets.Registered(widget)) {
 					return nil, out, fmt.Errorf("unknown widget %q", widget)
 				}
+				id := attrs["id"]
+				if widget != "calendar" && id == "" {
+					return nil, out, errors.New("widget requires an id")
+				}
+				if id != "" && widgetIDs[id] {
+					return nil, out, fmt.Errorf("duplicate widget id %q", id)
+				}
+				if id != "" {
+					widgetIDs[id] = true
+				}
+				x, errX := strconv.Atoi(attrs["data-x"])
+				y, errY := strconv.Atoi(attrs["data-y"])
+				w, errW := strconv.Atoi(attrs["data-width"])
+				h, errH := strconv.Atoi(attrs["data-height"])
+				if errX != nil || errY != nil || errW != nil || errH != nil || w <= 0 || h <= 0 {
+					return nil, out, fmt.Errorf("widget %q requires integer geometry with positive width and height", id)
+				}
+				defaults := map[string]string{}
+				for key, value := range attrs {
+					if strings.HasPrefix(key, "data-config-") {
+						defaults[strings.TrimPrefix(key, "data-config-")] = value
+					}
+				}
+				out.Widgets = append(out.Widgets, Widget{Instance: id, Provider: widget, X: x, Y: y, Width: w, Height: h, Defaults: defaults})
 				child.dynamic, child.widget = true, true
-				if attrs["data-navigation"] == "true" {
+				if widget == "calendar" && attrs["data-navigation"] == "true" {
 					if attrs["id"] == "" {
 						return nil, out, errors.New("navigable calendar requires an id")
 					}
@@ -243,8 +382,12 @@ func compileXML(source []byte, width, height int, values Values) ([]byte, Output
 					}
 					deps["widget."+attrs["id"]+".month_offset"] = struct{}{}
 				}
-				deps["system.date"] = struct{}{}
-				deps["system.locale"] = struct{}{}
+				if widget == "calendar" {
+					deps["system.date"] = struct{}{}
+					deps["system.locale"] = struct{}{}
+				} else {
+					deps["system.time"] = struct{}{}
+				}
 			}
 			if !child.skip && rootSeen && (attrs["data-action"] != "" || attrs["data-region"] != "") {
 				r, err := elementRect(name, attrs)
@@ -263,12 +406,46 @@ func compileXML(source []byte, width, height int, values Values) ([]byte, Output
 			}
 			stack = append(stack, child)
 			if !child.skip {
-				t.Attr = stripDataAttrs(t.Attr)
+				if child.widget && attrs["data-widget"] != "calendar" && !options.MetadataOnly {
+					t.Attr = []xml.Attr{{Name: xml.Name{Local: "id"}, Value: attrs["id"]}, {Name: xml.Name{Local: "transform"}, Value: "translate(" + attrs["data-x"] + " " + attrs["data-y"] + ")"}}
+				} else {
+					t.Attr = stripDataAttrs(t.Attr)
+				}
 				if err := enc.EncodeToken(t); err != nil {
 					return nil, out, err
 				}
 				if child.dynamic {
 					if child.widget {
+						if attrs["data-widget"] != "calendar" {
+							if !options.MetadataOnly {
+								config := maps.Clone(out.Widgets[len(out.Widgets)-1].Defaults)
+								for k, v := range options.WidgetConfig[attrs["id"]] {
+									config[k] = v
+								}
+								input := WidgetInput{Version: "eink-widget-v1", Instance: attrs["id"], Now: options.Now.Format(time.RFC3339), Timezone: options.Timezone, Locale: options.Locale, Config: config}
+								input.Viewport.Width, _ = strconv.Atoi(attrs["data-width"])
+								input.Viewport.Height, _ = strconv.Atoi(attrs["data-height"])
+								ctx := options.Context
+								if ctx == nil {
+									ctx = context.Background()
+								}
+								fragment, err := options.Widgets.Render(ctx, attrs["data-widget"], input)
+								if err != nil {
+									return nil, out, fmt.Errorf("render widget %q: %w", attrs["id"], err)
+								}
+								viewport := xml.StartElement{Name: xml.Name{Local: "svg"}, Attr: []xml.Attr{{Name: xml.Name{Local: "width"}, Value: attrs["data-width"]}, {Name: xml.Name{Local: "height"}, Value: attrs["data-height"]}, {Name: xml.Name{Local: "viewBox"}, Value: "0 0 " + attrs["data-width"] + " " + attrs["data-height"]}, {Name: xml.Name{Local: "overflow"}, Value: "hidden"}}}
+								if err := enc.EncodeToken(viewport); err != nil {
+									return nil, out, err
+								}
+								if err := encodeWidgetFragment(enc, fragment); err != nil {
+									return nil, out, fmt.Errorf("render widget %q: %w", attrs["id"], err)
+								}
+								if err := enc.EncodeToken(viewport.End()); err != nil {
+									return nil, out, err
+								}
+							}
+							continue
+						}
 						regions, err := emitCalendar(enc, attrs, values)
 						if err != nil {
 							return nil, out, err

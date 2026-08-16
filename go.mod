@@ -2,8 +2,13 @@ module eink-server
 
 go 1.26
 
+// Avoid an ARM64 startup SIGILL on QNAP and similar kernels by lazily
+// evaluating Wazero CPU features. See wazero#2438 and navidrome#4396.
+replace github.com/tetratelabs/wazero v1.9.0 => github.com/tetratelabs/wazero v0.0.0-20251106165119-514cdb337684
+
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/extism/go-sdk v1.7.1
 	github.com/pierrec/lz4/v4 v4.1.27
 	github.com/tdewolff/canvas v0.0.0-20260708151538-b3beae08c578
 	github.com/tdewolff/font v0.0.0-20260424075104-b5eeb1e23189
@@ -22,10 +27,13 @@ require (
 	github.com/benoitkugler/textlayout v0.3.2 // indirect
 	github.com/benoitkugler/textprocessing v0.0.6 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/dylibso/observe-sdk/go v0.0.0-20240819160327-2d926c5d788a // indirect
 	github.com/go-fonts/latin-modern v0.3.3 // indirect
 	github.com/go-text/typesetting v0.3.4 // indirect
+	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/ianlancetaylor/demangle v0.0.0-20240805132620-81f5be970eca // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
@@ -33,11 +41,15 @@ require (
 	github.com/srwiley/scanx v0.0.0-20190309010443-e94503791388 // indirect
 	github.com/tdewolff/minify/v2 v2.24.13 // indirect
 	github.com/tdewolff/parse/v2 v2.8.12 // indirect
+	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834 // indirect
+	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
+	go.opentelemetry.io/proto/otlp v1.3.1 // indirect
 	golang.org/x/exp v0.0.0-20251017212417-90e834f514db // indirect
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
+	google.golang.org/protobuf v1.34.2 // indirect
 	modernc.org/knuth v0.5.5 // indirect
 	modernc.org/libc v1.66.10 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

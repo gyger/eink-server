@@ -32,6 +32,16 @@ type Config struct {
 	FontDirectory    string                  `toml:"font_directory"`
 	UseSystemFonts   bool                    `toml:"use_system_fonts"`
 	Actions          map[string]ActionConfig `toml:"actions"`
+	Widgets          map[string]WidgetConfig `toml:"widgets"`
+}
+
+type WidgetConfig struct {
+	Module               string            `toml:"module"`
+	AllowedHosts         []string          `toml:"allowed_hosts"`
+	Timeout              string            `toml:"timeout"`
+	MaxMemoryPages       uint32            `toml:"max_memory_pages"`
+	MaxHTTPResponseBytes int64             `toml:"max_http_response_bytes"`
+	Config               map[string]string `toml:"config"`
 }
 
 type ActionConfig struct {
@@ -56,6 +66,7 @@ func Defaults() Config {
 		FontDirectory:    "./fonts",
 		UseSystemFonts:   true,
 		Actions:          map[string]ActionConfig{},
+		Widgets:          map[string]WidgetConfig{},
 	}
 }
 
@@ -149,6 +160,35 @@ func (c Config) Validate() error {
 		for header, value := range action.Headers {
 			if strings.ContainsAny(header+value, "\r\n") {
 				return fmt.Errorf("action %q contains an invalid header", name)
+			}
+		}
+	}
+	for name, widget := range c.Widgets {
+		if !namePattern.MatchString(name) {
+			return fmt.Errorf("invalid widget name %q", name)
+		}
+		if widget.Module == "" {
+			return fmt.Errorf("widget %q module must not be empty", name)
+		}
+		u, err := url.Parse(widget.Module)
+		if err != nil || u.IsAbs() || strings.HasPrefix(widget.Module, "//") {
+			return fmt.Errorf("widget %q module must be a local path", name)
+		}
+		if widget.Timeout != "" {
+			d, err := time.ParseDuration(widget.Timeout)
+			if err != nil || d <= 0 || d > 30*time.Second {
+				return fmt.Errorf("widget %q timeout must be between 1ns and 30s", name)
+			}
+		}
+		if widget.MaxMemoryPages > 0 && widget.MaxMemoryPages > 65536 {
+			return fmt.Errorf("widget %q max_memory_pages is too large", name)
+		}
+		if widget.MaxHTTPResponseBytes < 0 || widget.MaxHTTPResponseBytes > 16<<20 {
+			return fmt.Errorf("widget %q max_http_response_bytes is invalid", name)
+		}
+		for _, host := range widget.AllowedHosts {
+			if host == "" || strings.ContainsAny(host, "/:*?#@") {
+				return fmt.Errorf("widget %q has invalid allowed host %q", name, host)
 			}
 		}
 	}

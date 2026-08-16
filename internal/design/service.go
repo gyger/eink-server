@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -57,6 +58,7 @@ type Service struct {
 	Compiler        Compiler
 	Now             func() time.Time
 	WidgetHandlers  map[string]WidgetEventHandler
+	Widgets         WidgetRenderer
 	renderMu        sync.Map
 }
 
@@ -72,6 +74,11 @@ const builtinStatus = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024
 </g>
 </svg>`
 const builtinTouch = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 758"><rect width="1024" height="758" fill="white"/><text x="50" y="70" font-family="sans-serif" font-size="42">Touch action test</text><rect id="button-one" x="80" y="140" width="380" height="220" rx="20" fill="#dddddd" stroke="black" stroke-width="5" data-action="button.one" data-region="button-one"/><text x="170" y="270" font-family="sans-serif" font-size="44">Button one</text><rect id="button-two" x="560" y="140" width="380" height="220" rx="20" fill="#dddddd" stroke="black" stroke-width="5" data-action="button.two" data-region="button-two"/><text x="650" y="270" font-family="sans-serif" font-size="44">Button two</text></svg>`
+const builtinDepartures = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 758" data-refresh="1m">
+<rect width="1024" height="758" fill="white"/><text x="175" y="385" text-anchor="middle" font-family="Noto Sans" font-size="128" data-value="${system.time}">18:30</text>
+<line x1="350" y1="42" x2="350" y2="716" stroke="#aaa" stroke-width="2"/>
+<g id="next-buses" data-widget="departures" data-x="380" data-y="40" data-width="610" data-height="675" data-config-stop-id="de-DELFI_de:10041:8000323_G_G" data-config-title="Departures" data-config-rows="5" data-config-modes="BUS"/>
+</svg>`
 
 //go:embed builtins/eink-verification.svg
 var builtinEInkVerification []byte
@@ -82,6 +89,7 @@ func (s *Service) Reload(ctx context.Context) error {
 	for _, d := range []store.Design{
 		{ID: "builtin:status", Name: "Time and calendar", Source: "builtin", SVG: []byte(builtinStatus)},
 		{ID: "builtin:touch-demo", Name: "Touch demo", Source: "builtin", SVG: []byte(builtinTouch)},
+		{ID: "builtin:departures", Name: "Clock and Transitous departures", Source: "builtin", SVG: []byte(builtinDepartures)},
 		{ID: "builtin:eink-verification", Name: "E Ink renderer and protocol verification", Source: "builtin", SVG: builtinEInkVerification},
 	} {
 		if err := s.validate(d.SVG); err != nil {
@@ -130,7 +138,7 @@ func (s *Service) Reload(ctx context.Context) error {
 }
 
 func (s *Service) validate(source []byte) error {
-	_, err := s.Compiler.Render(source, 1024, 758, sampleValues(s.SystemName))
+	_, err := s.Compiler.RenderWithOptions(source, 1024, 758, sampleValues(s.SystemName), RenderOptions{Smooth: true, Widgets: s.Widgets, MetadataOnly: true})
 	return err
 }
 
@@ -235,11 +243,29 @@ func (s *Service) Render(ctx context.Context, uuid string, force bool) (store.As
 			values["widget."+state.Instance+".month_offset"] = strconv.Itoa(v.MonthOffset)
 		}
 	}
+	widgetConfig := map[string]map[string]string{}
+	for _, state := range states {
+		if state.Provider == "calendar" {
+			continue
+		}
+		var saved struct {
+			Config map[string]string `json:"config"`
+		}
+		if json.Unmarshal(state.State, &saved) == nil {
+			widgetConfig[state.Instance] = saved.Config
+		}
+	}
 	if !force && active.ValuesHash != "" && store.ValuesHash(values, active.Dependencies) == active.ValuesHash {
 		return store.Assignment{}, nil
 	}
-	out, err := s.Compiler.RenderWithOptions(active.SVG, int(device.Width), int(device.Height), values, RenderOptions{Smooth: device.Settings.Rendering == "smooth"})
+	zone, _ := time.LoadLocation(device.Timezone)
+	if zone == nil {
+		zone = time.UTC
+	}
+	renderNow := s.now().In(zone)
+	out, err := s.Compiler.RenderWithOptions(active.SVG, int(device.Width), int(device.Height), values, RenderOptions{Smooth: device.Settings.Rendering == "smooth", Context: ctx, Widgets: s.Widgets, WidgetConfig: widgetConfig, Now: renderNow, Timezone: device.Timezone, Locale: device.Locale})
 	if err != nil {
+		s.emit(ctx, uuid, "widget.render.failed", map[string]any{"design_id": active.DesignID, "error": err.Error()})
 		return store.Assignment{}, err
 	}
 	hash := store.ValuesHash(values, out.Dependencies)
@@ -399,7 +425,98 @@ func (calendarEventHandler) HandleEvent(_ context.Context, event WidgetEvent) (W
 }
 
 func (s *Service) Metadata(ctx context.Context, d store.Design) (Output, error) {
-	return s.Compiler.Render(d.SVG, 1024, 758, sampleValues(s.SystemName))
+	return s.Compiler.RenderWithOptions(d.SVG, 1024, 758, sampleValues(s.SystemName), RenderOptions{Smooth: true, Widgets: s.Widgets, MetadataOnly: true})
+}
+
+type WidgetView struct {
+	Widget
+	Effective map[string]string `json:"effective"`
+}
+
+func (s *Service) ActiveWidgets(ctx context.Context, uuid string) ([]WidgetView, error) {
+	active, err := s.Store.ActiveDesign(ctx, uuid)
+	if err != nil {
+		return nil, err
+	}
+	meta, err := s.Compiler.RenderWithOptions(active.SVG, 1024, 758, sampleValues(s.SystemName), RenderOptions{Smooth: true, Widgets: s.Widgets, MetadataOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	states, err := s.Store.WidgetStates(ctx, uuid, active.DesignID)
+	if err != nil {
+		return nil, err
+	}
+	saved := map[string]map[string]string{}
+	for _, state := range states {
+		var v struct {
+			Config map[string]string `json:"config"`
+		}
+		if json.Unmarshal(state.State, &v) == nil {
+			saved[state.Provider+"\x00"+state.Instance] = v.Config
+		}
+	}
+	out := make([]WidgetView, len(meta.Widgets))
+	for i, w := range meta.Widgets {
+		effective := maps.Clone(w.Defaults)
+		for k, v := range saved[w.Provider+"\x00"+w.Instance] {
+			effective[k] = v
+		}
+		out[i] = WidgetView{Widget: w, Effective: effective}
+	}
+	return out, nil
+}
+
+func (s *Service) PutWidgetConfig(ctx context.Context, uuid, instance string, values map[string]string) (store.Assignment, error) {
+	active, err := s.Store.ActiveDesign(ctx, uuid)
+	if err != nil {
+		return store.Assignment{}, err
+	}
+	widgets, err := s.ActiveWidgets(ctx, uuid)
+	if err != nil {
+		return store.Assignment{}, err
+	}
+	var found *WidgetView
+	for i := range widgets {
+		if widgets[i].Instance == instance {
+			found = &widgets[i]
+			break
+		}
+	}
+	if found == nil {
+		return store.Assignment{}, sql.ErrNoRows
+	}
+	for key := range values {
+		if _, ok := found.Defaults[key]; !ok {
+			return store.Assignment{}, fmt.Errorf("undeclared widget field %q", key)
+		}
+	}
+	raw, _ := json.Marshal(struct {
+		Config map[string]string `json:"config"`
+	}{values})
+	if err := s.Store.PutWidgetState(ctx, uuid, active.DesignID, found.Provider, instance, raw); err != nil {
+		return store.Assignment{}, err
+	}
+	return s.Render(ctx, uuid, true)
+}
+
+func (s *Service) ResetWidgetConfig(ctx context.Context, uuid, instance string) (store.Assignment, error) {
+	active, err := s.Store.ActiveDesign(ctx, uuid)
+	if err != nil {
+		return store.Assignment{}, err
+	}
+	widgets, err := s.ActiveWidgets(ctx, uuid)
+	if err != nil {
+		return store.Assignment{}, err
+	}
+	for _, w := range widgets {
+		if w.Instance == instance {
+			if err := s.Store.DeleteWidgetState(ctx, uuid, active.DesignID, w.Provider, instance); err != nil {
+				return store.Assignment{}, err
+			}
+			return s.Render(ctx, uuid, true)
+		}
+	}
+	return store.Assignment{}, sql.ErrNoRows
 }
 
 func (s *Service) emit(ctx context.Context, uuid, typ string, data any) {

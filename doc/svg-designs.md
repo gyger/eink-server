@@ -56,6 +56,35 @@ regions; tapping the title returns to the current month. Navigation is limited
 to twelve months in either direction and returns to the current month five
 minutes after the last tap.
 
+## Extism widgets and Transitous
+
+Extism modules implement `eink-widget-v1`: `render` accepts JSON and returns
+one local-coordinate SVG `g`. Portable fields are declared with
+`data-config-*` and appear automatically in each device card. Plugins run only
+during active rendering; upload, listing, and inspection remain network-free.
+
+The selectable `builtin:departures` design places a local clock beside live
+Transitous departures. Find a stop ID with:
+
+```text
+GET https://api.transitous.org/api/v1/geocode?text=STOP_NAME&type=STOP&language=de
+```
+
+Select the design and enter that ID in the Widgets section. The embedded module
+contacts only `api.transitous.org`. Transitous is a public best-effort service;
+keep request volume low and retain its attribution. See
+<https://transitous.org/sources/> for source and licence details.
+
+External modules use `[widgets.NAME]` in TOML and must be local files. Controls
+include `allowed_hosts`, `timeout` (default 5s), `max_memory_pages` (default
+1024/64 MiB), and `max_http_response_bytes` (default 1 MiB). Values below
+`[widgets.NAME.config]` are protected Extism configuration and never appear in
+SVG metadata, REST responses, logs, or the web UI.
+
+The embedded departures artifact is built reproducibly with Rust 1.97.1 for
+`wasm32-wasip1` and `extism-pdk` 1.4.1. Normal server builds use the checked-in
+WASM and do not require Rust.
+
 ## Fonts
 
 Noto Sans and Noto Serif variable fonts are embedded in the server binary under
