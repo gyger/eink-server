@@ -114,6 +114,11 @@ The default-enabled encryption option sends `encryption_mode_set 0`, disabling
 application-level outbound protocol encryption for the self-hosted server. It
 does not alter the independently encrypted bootloader protocol. Clearing the
 option preserves the tablet's current encryption configuration.
+The **Firmware system screens** selector writes TCLV parameter 49. Its default,
+**Not connected only**, keeps the server-rendered image visible while charging
+but still shows the firmware warning when the tablet loses its server. The
+configurator reads the value before and after saving so the tablet response is
+visible in the log.
 
 ## Touch logging check
 

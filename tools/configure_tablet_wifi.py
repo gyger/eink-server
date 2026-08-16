@@ -23,6 +23,7 @@ except ImportError as exc:
 BAUD_RATE = 115200
 QUIET_SECONDS = 0.4
 COMMAND_TIMEOUT = 4.0
+SYSTEM_SCREENS_TCLV_ID = 49
 
 
 def serial_ports() -> list[tuple[str, str]]:
@@ -76,6 +77,22 @@ def exchange(port: serial.Serial, command: str, quiet: float = QUIET_SECONDS) ->
     return read_until_quiet(port, quiet)
 
 
+def tclv_u32_write_command(tclv_id: int, value: int) -> str:
+    """Build the tablet CLI request for a four-byte little-endian TCLV value."""
+    if not 0 <= tclv_id <= 0xFFFF:
+        raise ValueError("TCLV ID must fit in 16 bits.")
+    if not 0 <= value <= 0xFFFFFFFF:
+        raise ValueError("TCLV value must fit in 32 bits.")
+    return f"tclv_request {tclv_id.to_bytes(2, 'little').hex()}0104{value.to_bytes(4, 'little').hex()}"
+
+
+def tclv_read_command(tclv_id: int) -> str:
+    """Build the tablet CLI request for reading a TCLV value."""
+    if not 0 <= tclv_id <= 0xFFFF:
+        raise ValueError("TCLV ID must fit in 16 bits.")
+    return f"tclv_request {tclv_id.to_bytes(2, 'little').hex()}0000"
+
+
 class WifiConfigurator(App[None]):
     TITLE = "Joan Wi-Fi Configurator"
     SUB_TITLE = "USB serial provisioning"
@@ -112,6 +129,17 @@ class WifiConfigurator(App[None]):
             yield Input(placeholder="Leave blank to keep the current server", id="server-ip")
             yield Label("Server TCP port")
             yield Input(value="11113", placeholder="11113", type="integer", id="server-port")
+            yield Label("Firmware system screens")
+            yield Select(
+                [
+                    ("Disabled", "0"),
+                    ("Battery only", "1"),
+                    ("Not connected only (keep server image while charging)", "2"),
+                    ("Battery + not connected", "3"),
+                ],
+                value="2",
+                id="system-screens",
+            )
             yield Checkbox(
                 "Disable application-level outbound encryption",
                 value=True,
@@ -167,6 +195,7 @@ class WifiConfigurator(App[None]):
         repeated = self.query_one("#password-repeat", Input).value
         server_ip = self.query_one("#server-ip", Input).value.strip()
         server_port_text = self.query_one("#server-port", Input).value.strip()
+        system_screens_value = self.query_one("#system-screens", Select).value
         try:
             if port_value is Select.BLANK:
                 raise ValueError("Select a serial port.")
@@ -187,6 +216,11 @@ class WifiConfigurator(App[None]):
                 server_port = int(server_port_text)
                 if not 1 <= server_port <= 65535:
                     raise ValueError("Server TCP port must be between 1 and 65535.")
+            if system_screens_value is Select.BLANK:
+                raise ValueError("Select a firmware system-screen mode.")
+            system_screens = int(str(system_screens_value))
+            if system_screens not in range(4):
+                raise ValueError("Invalid firmware system-screen mode.")
         except ValueError as exc:
             self.set_status(str(exc), error=True)
             return
@@ -199,6 +233,7 @@ class WifiConfigurator(App[None]):
             password,
             server_ip or None,
             server_port,
+            system_screens,
             self.query_one("#disable-encryption", Checkbox).value,
             self.query_one("#no-reboot", Checkbox).value,
         )
@@ -211,6 +246,7 @@ class WifiConfigurator(App[None]):
         password: str,
         server_ip: str | None,
         server_port: int | None,
+        system_screens: int,
         disable_encryption: bool,
         no_reboot: bool,
     ) -> None:
@@ -242,8 +278,36 @@ class WifiConfigurator(App[None]):
                 if disable_encryption:
                     report("Disabling application-level outbound encryption")
                     exchange(port, "encryption_mode_set 0")
+                report("Reading current firmware system-screen mode")
+                response = exchange(
+                    port, tclv_read_command(SYSTEM_SCREENS_TCLV_ID)
+                ).decode("utf-8", errors="backslashreplace")
+                if response.strip():
+                    report(response.strip())
+                screen_names = {
+                    0: "disabled",
+                    1: "battery only",
+                    2: "not connected only",
+                    3: "battery + not connected",
+                }
+                report(
+                    "Setting firmware system screens to "
+                    f"[bold]{screen_names[system_screens]}[/]"
+                )
+                response = exchange(
+                    port,
+                    tclv_u32_write_command(SYSTEM_SCREENS_TCLV_ID, system_screens),
+                ).decode("utf-8", errors="backslashreplace")
+                if response.strip():
+                    report(response.strip())
                 report("Persisting settings to flash")
                 exchange(port, "flash_save", quiet=1.0)
+                report("Checking saved firmware system-screen mode")
+                response = exchange(
+                    port, tclv_read_command(SYSTEM_SCREENS_TCLV_ID)
+                ).decode("utf-8", errors="backslashreplace")
+                if response.strip():
+                    report(response.strip())
                 report("Reading saved configuration (response hidden because it may contain credentials)")
                 exchange(port, "wifi_conf_get")
                 if server_ip is not None:
