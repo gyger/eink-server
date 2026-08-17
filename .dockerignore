@@ -1,0 +1,8 @@
+.git
+.github
+data
+dist
+release
+plugins/departures/target
+*.db
+*.log

@@ -59,6 +59,50 @@ public internet.
 For development workflows, validation steps, and protocol limitations, see the
 [documentation index](doc/README.md).
 
+## Container
+
+The published image is a minimal, statically linked multi-architecture image
+for Linux AMD64 and ARM64:
+
+```sh
+docker pull ghcr.io/gyger/eink-server:latest
+cp eink-server.example.toml eink-server.toml
+docker compose up -d
+```
+
+`compose.yaml` publishes the web interface on port 8080 and the tablet gateway
+on port 11113, persists SQLite state in `./data`, mounts the configuration
+read-only, and restarts the service after an ASUSTOR or Docker reboot. The
+container needs a writable `/tmp` because the server extracts its embedded
+fonts into a private temporary directory at startup.
+
+Build and run only the NAS architecture locally with:
+
+```sh
+docker compose up -d --build
+```
+
+To build an ARM64 image explicitly (for example before copying it to an
+ASUSTOR NAS), run:
+
+```sh
+docker build --platform linux/arm64 -t eink-server:arm64 .
+```
+
+When pulling the published `latest` tag, Docker or Podman automatically selects
+the matching AMD64 or ARM64 image from the multi-architecture manifest.
+
+Build a multi-architecture image for a registry with Buildx:
+
+```sh
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t REGISTRY/eink-server:latest --push .
+```
+
+The GitHub Actions container workflow publishes `latest`, tag, and commit-SHA
+tags to `ghcr.io/gyger/eink-server`. The package must be public in the GitHub
+package settings for anonymous NAS pulls.
+
 ## Native API
 
 ```sh
@@ -97,7 +141,7 @@ Compatibility routes are intentionally limited to `POST /login`,
 `GET /api/device/`, and multipart `PUT /backend/{uuid}`. VSS sessions, HTML/URL
 rendering, firmware, sleep schedules, and device commands are not implemented.
 
-WASM widgets, multi-page navigation, general multi-rectangle/waveform control,
-URL rendering, encryption, bootloader/firmware updates, and verified
+Multi-page navigation, general multi-rectangle/waveform control, URL rendering,
+encryption, bootloader/firmware updates, and verified
 larger-device support are future work. Current delivery can update one changed
 bounding rectangle per frame.

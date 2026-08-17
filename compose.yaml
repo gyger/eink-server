@@ -1,0 +1,13 @@
+services:
+  eink-server:
+    image: ghcr.io/gyger/eink-server:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "11113:11113"
+    volumes:
+      - ./data:/data
+      - ./eink-server.toml:/config/eink-server.toml:ro
+    tmpfs:
+      - /tmp:size=64m,mode=1777
