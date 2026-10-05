@@ -11,7 +11,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -582,7 +581,7 @@ func (a *API) listActions(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) putAction(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`).MatchString(name) {
+	if !design.NamePattern.MatchString(name) {
 		problem(w, 400, "invalid_action", "invalid action name")
 		return
 	}

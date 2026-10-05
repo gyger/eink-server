@@ -27,7 +27,11 @@ import (
 const MaxSVGBytes = 2 << 20
 const rasterScale = 3
 
-var variablePattern = regexp.MustCompile(`\$\{([a-z][a-z0-9_.]*)\}`)
+var (
+	variablePattern  = regexp.MustCompile(`\$\{([a-z][a-z0-9_.]*)\}`)
+	fontFamilyCSS    = regexp.MustCompile(`(?i)(font-family\s*:\s*)(["']?)(sans-serif|sans|serif)(["']?)`)
+	transformPattern = regexp.MustCompile(`([a-zA-Z]+)\s*\(([^)]*)\)`)
+)
 
 type Values map[string]string
 
@@ -527,8 +531,7 @@ func normalizeFontFamily(value string) string {
 }
 
 func normalizeFontCSS(value string) string {
-	re := regexp.MustCompile(`(?i)(font-family\s*:\s*)(["']?)(sans-serif|sans|serif)(["']?)`)
-	return re.ReplaceAllStringFunc(value, func(match string) string {
+	return fontFamilyCSS.ReplaceAllStringFunc(value, func(match string) string {
 		parts := strings.SplitN(match, ":", 2)
 		return parts[0] + ":" + normalizeFontFamily(strings.TrimSpace(parts[1]))
 	})
@@ -715,8 +718,7 @@ func numbers(s string, count int) ([]float64, error) {
 
 func parseTransform(s string) (matrix, error) {
 	m := identity
-	re := regexp.MustCompile(`([a-zA-Z]+)\s*\(([^)]*)\)`)
-	matches := re.FindAllStringSubmatch(s, -1)
+	matches := transformPattern.FindAllStringSubmatch(s, -1)
 	if len(matches) == 0 {
 		return m, errors.New("invalid SVG transform")
 	}

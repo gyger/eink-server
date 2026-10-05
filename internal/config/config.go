@@ -18,6 +18,11 @@ import (
 
 const DefaultFilename = "eink-server.toml"
 
+var (
+	namePattern          = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+	defaultDesignPattern = regexp.MustCompile(`^(builtin|file|db):[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+)
+
 type Config struct {
 	DeviceListen     string                  `toml:"device_listen"`
 	HTTPListen       string                  `toml:"http_listen"`
@@ -127,7 +132,7 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.SystemName) == "" {
 		return errors.New("system_name must not be empty")
 	}
-	if c.DefaultDesign != "" && !regexp.MustCompile(`^(builtin|file|db):[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`).MatchString(c.DefaultDesign) {
+	if c.DefaultDesign != "" && !defaultDesignPattern.MatchString(c.DefaultDesign) {
 		return errors.New("default_design must be empty or a builtin:, file:, or db: design ID")
 	}
 	if c.DefaultRendering != "eink" && c.DefaultRendering != "smooth" {
@@ -139,7 +144,6 @@ func (c Config) Validate() error {
 	if c.DefaultLocale != "de-DE" && c.DefaultLocale != "en-GB" {
 		return errors.New("default_locale must be de-DE or en-GB")
 	}
-	namePattern := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 	for name, action := range c.Actions {
 		if !namePattern.MatchString(name) {
 			return fmt.Errorf("invalid action name %q", name)
