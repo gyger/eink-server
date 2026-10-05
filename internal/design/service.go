@@ -76,7 +76,8 @@ const builtinStatus = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024
 </svg>`
 const builtinTouch = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 758"><rect width="1024" height="758" fill="white"/><text x="50" y="70" font-family="sans-serif" font-size="42">Touch action test</text><rect id="button-one" x="80" y="140" width="380" height="220" rx="20" fill="#dddddd" stroke="black" stroke-width="5" data-action="button.one" data-region="button-one"/><text x="170" y="270" font-family="sans-serif" font-size="44">Button one</text><rect id="button-two" x="560" y="140" width="380" height="220" rx="20" fill="#dddddd" stroke="black" stroke-width="5" data-action="button.two" data-region="button-two"/><text x="650" y="270" font-family="sans-serif" font-size="44">Button two</text></svg>`
 const builtinDepartures = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 758" data-refresh="1m">
-<rect width="1024" height="758" fill="white"/><text x="175" y="385" text-anchor="middle" font-family="Noto Sans" font-size="128" data-value="${system.time}">18:30</text>
+<rect width="1024" height="758" fill="white"/><text x="175" y="365" text-anchor="middle" font-family="Noto Sans" font-size="128" data-value="${system.time}">18:30</text>
+<text x="175" y="425" text-anchor="middle" font-family="Noto Sans" font-size="36" font-weight="500" data-value="${system.date_local}">05.10.2026</text>
 <line x1="350" y1="42" x2="350" y2="716" stroke="#aaa" stroke-width="2"/>
 <g id="next-buses" data-widget="departures" data-x="380" data-y="40" data-width="610" data-height="675" data-config-stop-id="de-DELFI_de:10041:8000323_G_G" data-config-title="Departures" data-config-rows="5" data-config-modes="BUS"/>
 </svg>`
