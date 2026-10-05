@@ -50,14 +50,19 @@ PV3 listener.
    The shipped `eink` mode uses native-resolution SVG output and the recovered
    VSS grayscale range mapping; `smooth` retains 3× supersampling and ordinary
    grayscale quantization.
-7. The gateway sends the changed rectangle as one logical image. The first
-   update after a connection is full-screen.
+7. The gateway sends the changed rectangle as one logical image when the tablet
+   has confirmed the preceding frame. Otherwise it sends a full-screen frame.
 8. The assignment becomes `sent`. An immediate type-1 reply records
    `acknowledged_at`; a later tablet status that echoes the frame ID changes it
    to `delivered`.
 
-Only the newest undelivered assignment is relevant to a device. Old assignments
-remain historical metadata but are never replayed ahead of a newer frame.
+Only the newest assignment is relevant to a device. Once it is delivered,
+older unfinished assignments are never replayed. Unconfirmed frames retry at
+15-second intervals, up to three attempts per connection; exhaustion records an
+error and closes the connection so the tablet can reconnect. Interrupted writes
+also close the connection to avoid continuing a partially written record.
+On reconnect, a previously delivered desired frame is requeued if the tablet
+reports a different display state.
 
 ## Connection and concurrency model
 
@@ -70,6 +75,7 @@ remain historical metadata but are never replayed ahead of a newer frame.
   scheduler rerenders connected periodic designs on aligned minute boundaries.
 - There is at most one active session per UUID. A newer connection closes and
   replaces the older one.
+- A connection that changes its status UUID is rejected before updating state.
 - Each session serializes writes so heartbeat replies and image messages cannot
   interleave on the TCP stream.
 - Image delivery is also serialized per device to prevent duplicate concurrent
@@ -94,7 +100,11 @@ The default database is `./data/eink.db`. It contains:
 
 SQLite runs in WAL mode with foreign keys and a busy timeout. Status samples and
 events are pruned after seven days; events are additionally capped at 10,000.
-The singleton `schema_version` row is currently version 1. Startup applies
+Frame history is pruned at startup and hourly, retaining the latest 100
+assignments per tablet plus its currently displayed frame. Related touch maps
+and widget event claims are retained with those frames, and unreferenced image
+blobs are removed. SQLite reuses freed pages; pruning does not shrink the file.
+The singleton `schema_version` row is currently version 3. Startup applies
 pending migrations transactionally and refuses databases created by a newer
 server. Version 1 remains editable until the first release; after that, schema
 changes must append a new numbered migration.

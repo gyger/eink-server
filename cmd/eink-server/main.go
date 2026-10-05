@@ -84,6 +84,20 @@ func main() {
 	db.DefaultLocale = cfg.DefaultLocale
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			if err := db.PruneFrameHistory(ctx); err != nil && ctx.Err() == nil {
+				log.Warn("pruning frame history", "error", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 	hub := events.New()
 	gw := gateway.New(db, hub, log)
 	fontCleanup, err := design.ConfigureFonts(cfg.FontDirectory, cfg.UseSystemFonts)

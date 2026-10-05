@@ -26,7 +26,7 @@ type Store struct {
 // SchemaVersion is the newest database schema understood by this binary.
 // Keep this migration editable until the first release. After release, schema
 // changes must append a new numbered migration instead.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 type Device struct {
 	UUID         string             `json:"uuid"`
@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS widget_event_consumptions (
  PRIMARY KEY(device_uuid,frame_id,target_key)
 );
 `,
+	3: `CREATE INDEX IF NOT EXISTS assignments_image_id ON assignments(image_id);`,
 }
 
 func nowString() string            { return time.Now().UTC().Format(time.RFC3339Nano) }
@@ -364,12 +365,21 @@ func randomID() uint32 {
 func (s *Store) Pending(ctx context.Context, uuid string) (Pending, error) {
 	var p Pending
 	var raw, queued string
-	err := s.DB.QueryRowContext(ctx, `SELECT a.id,a.device_uuid,a.frame_id,a.state,a.queued_at,a.last_error,d.width,d.height,i.content_type,i.source,a.settings_json FROM assignments a JOIN images i ON i.id=a.image_id JOIN devices d ON d.uuid=a.device_uuid WHERE a.device_uuid=? AND a.state!='delivered' ORDER BY a.id DESC LIMIT 1`, uuid).Scan(&p.ID, &p.DeviceUUID, &p.FrameID, &p.State, &queued, &p.LastError, &p.Width, &p.Height, &p.ContentType, &p.Source, &raw)
+	err := s.DB.QueryRowContext(ctx, `SELECT a.id,a.device_uuid,a.frame_id,a.state,a.queued_at,a.last_error,d.width,d.height,i.content_type,i.source,a.settings_json FROM assignments a JOIN images i ON i.id=a.image_id JOIN devices d ON d.uuid=a.device_uuid WHERE a.device_uuid=? AND a.id=(SELECT MAX(id) FROM assignments WHERE device_uuid=a.device_uuid) AND a.state!='delivered'`, uuid).Scan(&p.ID, &p.DeviceUUID, &p.FrameID, &p.State, &queued, &p.LastError, &p.Width, &p.Height, &p.ContentType, &p.Source, &raw)
 	p.QueuedAt = parseTime(queued)
 	if err == nil {
 		p.Settings, err = imageproc.ParseSettings(raw)
 	}
 	return p, err
+}
+
+// ReconcileDesired restores the latest frame after a reconnect reports that
+// the tablet no longer displays a previously delivered assignment.
+func (s *Store) ReconcileDesired(ctx context.Context, uuid string, displayState uint32) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE assignments SET state='queued',delivered_at=NULL,acknowledged_at=NULL,last_error=''
+WHERE device_uuid=? AND id=(SELECT MAX(id) FROM assignments WHERE device_uuid=?)
+AND state='delivered' AND frame_id!=?`, uuid, uuid, displayState)
+	return err
 }
 
 func (s *Store) PrepareSend(ctx context.Context, id int64, sequence uint32) error {
@@ -382,7 +392,7 @@ func (s *Store) MarkSent(ctx context.Context, id int64, sendErr error) error {
 	if sendErr != nil {
 		state, msg = "error", sendErr.Error()
 	}
-	_, err := s.DB.ExecContext(ctx, `UPDATE assignments SET state=?,last_error=? WHERE id=?`, state, msg, id)
+	_, err := s.DB.ExecContext(ctx, `UPDATE assignments SET state=?,last_error=? WHERE id=? AND state!='delivered'`, state, msg, id)
 	return err
 }
 

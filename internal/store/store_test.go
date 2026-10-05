@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"testing"
 
 	"eink-server/internal/imageproc"
@@ -101,4 +103,99 @@ func TestRejectsNewerSchema(t *testing.T) {
 func tinyPNG(t *testing.T) []byte {
 	t.Helper()
 	return []byte{137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0, 0, 0, 58, 126, 155, 85, 0, 0, 0, 10, 73, 68, 65, 84, 120, 156, 99, 248, 15, 0, 1, 1, 1, 0, 24, 221, 141, 176, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130}
+}
+
+func queuedFrames(t *testing.T) (*Store, []Assignment) {
+	t.Helper()
+	s, err := Open(t.TempDir() + "/review.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	ctx := context.Background()
+	uuid := "00112233-4455-6677-8899-aabbccddeeff"
+	if _, err := s.UpsertStatus(ctx, pv3.Status{UUID: uuid, Width: 4, Height: 2}); err != nil {
+		t.Fatal(err)
+	}
+	a, err := s.CreateAssignments(ctx, []string{uuid, uuid}, "image/png", tinyPNG(t), imageproc.Override{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s, a
+}
+
+func TestNewestDeliveredDoesNotResurrectOlder(t *testing.T) {
+	s, a := queuedFrames(t)
+	ctx := context.Background()
+	if _, ok, err := s.MarkDelivered(ctx, a[1].DeviceUUID, a[1].FrameID); err != nil || !ok {
+		t.Fatalf("delivery: %v %v", ok, err)
+	}
+	p, err := s.Pending(ctx, a[1].DeviceUUID)
+	if err != sql.ErrNoRows {
+		t.Fatalf("expected no pending work after newest delivered; got assignment %d (older=%d), err=%v", p.ID, a[0].ID, err)
+	}
+}
+
+func TestLateMarkSentPreservesDelivery(t *testing.T) {
+	s, a := queuedFrames(t)
+	ctx := context.Background()
+	if _, ok, err := s.MarkDelivered(ctx, a[1].DeviceUUID, a[1].FrameID); err != nil || !ok {
+		t.Fatalf("delivery: %v %v", ok, err)
+	}
+	for _, sendErr := range []error{nil, errors.New("late write failure")} {
+		if err := s.MarkSent(ctx, a[1].ID, sendErr); err != nil {
+			t.Fatal(err)
+		}
+		d, err := s.GetDevice(ctx, a[1].DeviceUUID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d.Desired.State != "delivered" {
+			t.Fatalf("late MarkSent regressed delivered frame to %q", d.Desired.State)
+		}
+	}
+}
+
+func TestReconnectReconcilesOnlyLatestDesiredFrame(t *testing.T) {
+	s, a := queuedFrames(t)
+	ctx := context.Background()
+	if _, _, err := s.MarkDelivered(ctx, a[1].DeviceUUID, a[1].FrameID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReconcileDesired(ctx, a[1].DeviceUUID, a[1].FrameID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Pending(ctx, a[1].DeviceUUID); err != sql.ErrNoRows {
+		t.Fatalf("matching display unexpectedly pending: %v", err)
+	}
+	if err := s.ReconcileDesired(ctx, a[1].DeviceUUID, 0); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.Pending(ctx, a[1].DeviceUUID)
+	if err != nil || p.ID != a[1].ID || p.State != "queued" {
+		t.Fatalf("reconciled pending=%+v err=%v", p, err)
+	}
+	d, err := s.GetDevice(ctx, a[1].DeviceUUID)
+	if err != nil || d.Desired.DeliveredAt != nil {
+		t.Fatalf("stale delivery timestamp: %+v err=%v", d, err)
+	}
+}
+
+func TestMigrationFromVersion2PreservesAssignments(t *testing.T) {
+	ctx := context.Background()
+	s, a := queuedFrames(t)
+	if _, err := s.DB.Exec(`DROP INDEX assignments_image_id; UPDATE schema_version SET version=2`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='assignments_image_id'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("index count=%d err=%v", count, err)
+	}
+	p, err := s.Pending(ctx, a[1].DeviceUUID)
+	if err != nil || p.ID != a[1].ID {
+		t.Fatalf("pending after migration=%+v err=%v", p, err)
+	}
 }

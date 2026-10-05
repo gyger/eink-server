@@ -8,8 +8,6 @@ confirmation, touch events, SVG actions, and the dynamic status dashboard.
 
 - Exercise offline queueing, restart recovery, interrupted transfers, rapid
   replacement uploads, and multiple simultaneous tablets.
-- Reconcile the desired frame after reconnect when the tablet reports a
-  different display-state ID.
 - Add release version information, reproducible Linux builds, a systemd service
   example, and SQLite backup/restore instructions.
 - Add explicit retry and delivery diagnostics to the management page.
