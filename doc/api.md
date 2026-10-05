@@ -104,7 +104,10 @@ Returns persisted events in ascending order. The limit is capped at 500.
 
 ### `GET /api/v1/events/stream`
 
-Opens a Server-Sent Events stream. Event names currently include:
+Opens a Server-Sent Events stream. Each message carries the persisted event
+ID. A reconnecting client sends it as `Last-Event-ID` (or `?after_id=`) and
+missed events are replayed from storage before live events continue. Event
+names currently include:
 
 - `device.connected`, `device.disconnected`, `device.enrolled`, `device.status`
 - `image.queued`, `image.sent`, `image.acknowledged`, `image.delivered`,

@@ -342,6 +342,35 @@ func (a *API) eventStream(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	fmt.Fprint(w, ": connected\n\n")
 	flusher.Flush()
+	send := func(e store.Event) {
+		b, _ := json.Marshal(e)
+		fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", e.ID, e.Type, b)
+	}
+	// Replay persisted events a reconnecting client missed. The subscription
+	// is already open, so nothing published meanwhile is lost; duplicates are
+	// filtered by ID below.
+	var lastID int64
+	resume := r.Header.Get("Last-Event-ID")
+	if resume == "" {
+		resume = r.URL.Query().Get("after_id")
+	}
+	if after, err := strconv.ParseInt(resume, 10, 64); err == nil && after > 0 {
+		lastID = after
+		for {
+			items, err := a.Store.Events(r.Context(), lastID, 500)
+			if err != nil || len(items) == 0 {
+				break
+			}
+			for _, e := range items {
+				send(e)
+				lastID = e.ID
+			}
+			flusher.Flush()
+			if len(items) < 500 {
+				break
+			}
+		}
+	}
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -352,8 +381,11 @@ func (a *API) eventStream(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, ": keepalive\n\n")
 			flusher.Flush()
 		case e := <-ch:
-			b, _ := json.Marshal(e)
-			fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", e.ID, e.Type, b)
+			if e.ID <= lastID {
+				continue
+			}
+			lastID = e.ID
+			send(e)
 			flusher.Flush()
 		}
 	}

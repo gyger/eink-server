@@ -11,7 +11,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"eink-server/internal/action"
 	"eink-server/internal/design"
@@ -213,5 +216,42 @@ func TestPreviewIsCachedPerAssignment(t *testing.T) {
 	two := get()
 	if bytes.Equal(two, one) || api.previews[uuid].assignmentID != second[0].ID {
 		t.Fatal("preview not refreshed for new assignment")
+	}
+}
+
+func TestEventStreamReplaysAfterLastEventID(t *testing.T) {
+	api, s, _ := testAPI(t)
+	ctx := context.Background()
+	var ids []int64
+	for _, typ := range []string{"one", "two", "three"} {
+		e, err := s.AddEvent(ctx, "", typ, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, e.ID)
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+	req := httptest.NewRequest("GET", "/api/v1/events/stream", nil).WithContext(reqCtx)
+	req.Header.Set("Last-Event-ID", strconv.FormatInt(ids[0], 10))
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() { api.Handler().ServeHTTP(rec, req); close(done) }()
+	time.Sleep(50 * time.Millisecond)
+	live, err := s.AddEvent(ctx, "", "four", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.Hub.Publish(live)
+	api.Hub.Publish(live) // a duplicate publish must not be streamed twice
+	<-done
+	body := rec.Body.String()
+	for _, want := range []string{"event: two\n", "event: three\n", "event: four\n"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %q", want, body)
+		}
+	}
+	if strings.Contains(body, "event: one\n") || strings.Count(body, "event: four\n") != 1 {
+		t.Fatalf("unexpected replay: %q", body)
 	}
 }
