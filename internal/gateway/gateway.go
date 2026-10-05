@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"eink-server/internal/events"
@@ -33,27 +34,38 @@ type Gateway struct {
 }
 
 type session struct {
-	conn          net.Conn
-	writeMu       sync.Mutex
-	deliverMu     sync.Mutex
-	statusMu      sync.RWMutex
-	status        pv3.Status
-	lastFrameID   uint32
-	attemptID     int64
-	attempts      int
-	lastAttemptAt time.Time
-	ready         chan struct{}
-	readyOnce     sync.Once
-	ackMu         sync.Mutex
-	nextSeq       uint32
-	lastFrame     []byte
-	frameWidth    int
-	frameHeight   int
+	conn      net.Conn
+	closed    atomic.Bool
+	writeMu   sync.Mutex
+	deliverMu sync.Mutex
+	statusMu  sync.RWMutex
+	status    pv3.Status
+	ready     chan struct{}
+	readyOnce sync.Once
+	ackMu     sync.Mutex
+	nextSeq   uint32
+	ackedSeq  uint32
+
+	// Delivery bookkeeping, guarded by deliverMu.
+	lastFrameID    uint32
+	lastSentSeq    uint32
+	attemptID      int64
+	attempts       int
+	lastAttemptAt  time.Time
+	renderFailedID int64
+	lastFrame      []byte
+	frameWidth     int
+	frameHeight    int
 }
 
 const tabletWriteTimeout = 10 * time.Second
 const deliveryRetryInterval = 15 * time.Second
+
+// maxDeliveryAttempts bounds unconfirmed sends per connection before the
+// gateway forces a reconnect. maxTotalDeliveryAttempts bounds them across
+// reconnects before the assignment is marked failed.
 const maxDeliveryAttempts = 3
+const maxTotalDeliveryAttempts = 3 * maxDeliveryAttempts
 
 func New(s *store.Store, h *events.Hub, log *slog.Logger) *Gateway {
 	return &Gateway{Store: s, Hub: h, Log: log, Renderer: render.UploadedImage{}, connections: make(map[string]*session)}
@@ -72,7 +84,7 @@ func (g *Gateway) Serve(ctx context.Context, addr string) error {
 		ln.Close()
 		g.mu.Lock()
 		for _, s := range g.connections {
-			s.conn.Close()
+			s.close()
 		}
 		g.mu.Unlock()
 	}()
@@ -133,6 +145,7 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 	var active *session
 	defer func() {
 		if active != nil {
+			active.closed.Store(true)
 			active.readyOnce.Do(func() { close(active.ready) })
 		}
 		if uuid != "" {
@@ -176,6 +189,7 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 			if err != nil {
 				g.Log.Warn("saving image acknowledgement", "uuid", uuid, "sequence", ack.Sequence, "error", err)
 			} else if matched {
+				active.noteAcknowledged(ack.Sequence)
 				g.emit(ctx, uuid, "image.acknowledged", map[string]any{"assignment_id": assignmentID, "sequence": ack.Sequence})
 			} else {
 				g.Log.Debug("unmatched image acknowledgement", "uuid", uuid, "sequence", ack.Sequence)
@@ -225,7 +239,7 @@ func (g *Gateway) handle(ctx context.Context, c net.Conn) {
 			active = &session{conn: c, status: st, ready: make(chan struct{}), nextSeq: st.Kind + 1}
 			g.mu.Lock()
 			if old := g.connections[uuid]; old != nil && old != active {
-				old.conn.Close()
+				old.close()
 			}
 			g.connections[uuid] = active
 			g.mu.Unlock()
@@ -298,6 +312,25 @@ func (s *session) advanceSequence(observed uint32) {
 	s.ackMu.Unlock()
 }
 
+func (s *session) noteAcknowledged(sequence uint32) {
+	s.ackMu.Lock()
+	s.ackedSeq = sequence
+	s.ackMu.Unlock()
+}
+
+func (s *session) acknowledged(sequence uint32) bool {
+	s.ackMu.Lock()
+	defer s.ackMu.Unlock()
+	return sequence != 0 && s.ackedSeq == sequence
+}
+
+// close marks the session dead so pending delivery work skips it, then closes
+// the connection so the reader loop exits.
+func (s *session) close() {
+	s.closed.Store(true)
+	s.conn.Close()
+}
+
 func (s *session) write(data []byte) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -330,6 +363,9 @@ func (g *Gateway) deliver(ctx context.Context, active *session) {
 // deliverLatest sends the newest desired assignment. It returns true after a
 // successful send so the caller checks once more for work queued concurrently.
 func (g *Gateway) deliverLatest(ctx context.Context, active *session) bool {
+	if active.closed.Load() {
+		return false
+	}
 	active.statusMu.RLock()
 	st := active.status
 	active.statusMu.RUnlock()
@@ -342,43 +378,66 @@ func (g *Gateway) deliverLatest(ctx context.Context, active *session) bool {
 		g.Log.Error("loading desired frame", "uuid", uuid, "error", err)
 		return false
 	}
+	if active.renderFailedID == pending.ID {
+		// Rendering is deterministic for a stored frame; wait for a newer one.
+		return false
+	}
+	if pending.SendAttempts >= maxTotalDeliveryAttempts {
+		reason := fmt.Sprintf("delivery not confirmed after %d attempts; waiting for a new frame", pending.SendAttempts)
+		if saveErr := g.Store.MarkFailed(ctx, pending.ID, reason); saveErr != nil {
+			g.Log.Warn("saving failed delivery", "uuid", uuid, "error", saveErr)
+		}
+		g.Log.Warn("image delivery abandoned", "uuid", uuid, "assignment_id", pending.ID, "attempts", pending.SendAttempts)
+		g.emit(ctx, uuid, "image.failed", map[string]any{"assignment_id": pending.ID, "error": reason, "final": true})
+		return false
+	}
 	if active.attemptID == pending.ID {
 		if time.Since(active.lastAttemptAt) < deliveryRetryInterval {
 			return false
 		}
 		if active.attempts >= maxDeliveryAttempts {
-			err := errors.New("delivery not confirmed after three attempts; reconnecting")
+			err := fmt.Errorf("delivery not confirmed after %d attempts; reconnecting", active.attempts)
 			if saveErr := g.Store.MarkSent(ctx, pending.ID, err); saveErr != nil {
 				g.Log.Warn("saving exhausted delivery", "uuid", uuid, "error", saveErr)
 			}
 			g.emit(ctx, uuid, "image.failed", map[string]any{"assignment_id": pending.ID, "error": err.Error()})
-			active.conn.Close()
+			active.close()
 			return false
 		}
 	} else {
 		active.attemptID, active.attempts = pending.ID, 0
 	}
+	g.Log.Debug("image delivery starting", "uuid", uuid, "assignment_id", pending.ID, "frame_id", pending.FrameID)
+	frame, err := g.Renderer.Render(ctx, render.Input{Device: render.Device{UUID: uuid, Width: pending.Width, Height: pending.Height}, ContentType: pending.ContentType, Source: pending.Source, Settings: pending.Settings})
+	if err != nil {
+		// A render failure says nothing about the connection and would repeat
+		// identically, so it neither counts as an attempt nor reconnects.
+		active.renderFailedID = pending.ID
+		if saveErr := g.Store.MarkSent(ctx, pending.ID, err); saveErr != nil {
+			g.Log.Warn("saving image render state", "uuid", uuid, "error", saveErr)
+		}
+		g.emit(ctx, uuid, "image.failed", map[string]any{"assignment_id": pending.ID, "error": err.Error()})
+		g.Log.Warn("image render failed", "uuid", uuid, "assignment_id", pending.ID, "error", err)
+		return false
+	}
 	active.attempts++
 	active.lastAttemptAt = time.Now()
-	g.Log.Debug("image delivery starting", "uuid", uuid, "assignment_id", pending.ID, "frame_id", pending.FrameID)
+	// Partial updates are safe only against a base frame the tablet confirmed,
+	// either by echoing its frame ID in a status or by acknowledging its record.
+	previous := active.lastFrame
+	if active.lastFrameID == 0 || (st.DisplayState != active.lastFrameID && !active.acknowledged(active.lastSentSeq)) {
+		previous = nil
+	}
+	primitive := changedPrimitive(frame.Packed4Bit, previous, pending.Width, pending.Height, active.frameWidth, active.frameHeight)
+	finalSequence := active.sequence()
 	writeFailed := false
-	frame, err := g.Renderer.Render(ctx, render.Input{Device: render.Device{UUID: uuid, Width: pending.Width, Height: pending.Height}, ContentType: pending.ContentType, Source: pending.Source, Settings: pending.Settings})
+	err = g.Store.PrepareSend(ctx, pending.ID, finalSequence)
 	if err == nil {
-		// Partial updates are safe only against a tablet-confirmed base frame.
-		previous := active.lastFrame
-		if st.DisplayState != active.lastFrameID || active.lastFrameID == 0 {
-			previous = nil
-		}
-		primitive := changedPrimitive(frame.Packed4Bit, previous, pending.Width, pending.Height, active.frameWidth, active.frameHeight)
-		finalSequence := active.sequence()
-		err = g.Store.PrepareSend(ctx, pending.ID, finalSequence)
+		var wire []byte
+		wire, err = pv3.BuildImagePrimitives(st.UUIDBytes, finalSequence, pending.FrameID, []pv3.ImagePrimitive{primitive})
 		if err == nil {
-			var wire []byte
-			wire, err = pv3.BuildImagePrimitives(st.UUIDBytes, finalSequence, pending.FrameID, []pv3.ImagePrimitive{primitive})
-			if err == nil {
-				err = active.write(wire)
-				writeFailed = err != nil
-			}
+			err = active.write(wire)
+			writeFailed = err != nil
 		}
 	}
 	if saveErr := g.Store.MarkSent(ctx, pending.ID, err); saveErr != nil {
@@ -389,11 +448,12 @@ func (g *Gateway) deliverLatest(ctx context.Context, active *session) bool {
 		g.Log.Warn("image delivery failed", "uuid", uuid, "error", err)
 		// A failed write may leave a partial record on the stream. Reconnect before retrying.
 		if writeFailed {
-			active.conn.Close()
+			active.close()
 		}
 		return false
 	}
 	active.lastFrameID = pending.FrameID
+	active.lastSentSeq = finalSequence
 	active.lastFrame = append(active.lastFrame[:0], frame.Packed4Bit...)
 	active.frameWidth, active.frameHeight = pending.Width, pending.Height
 	g.emit(ctx, uuid, "image.sent", map[string]any{"assignment_id": pending.ID, "frame_id": pending.FrameID})

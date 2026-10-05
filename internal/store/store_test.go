@@ -184,7 +184,7 @@ func TestReconnectReconcilesOnlyLatestDesiredFrame(t *testing.T) {
 func TestMigrationFromVersion2PreservesAssignments(t *testing.T) {
 	ctx := context.Background()
 	s, a := queuedFrames(t)
-	if _, err := s.DB.Exec(`DROP INDEX assignments_image_id; UPDATE schema_version SET version=2`); err != nil {
+	if _, err := s.DB.Exec(`DROP INDEX assignments_image_id; ALTER TABLE assignments DROP COLUMN send_attempts; UPDATE schema_version SET version=2`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.migrate(ctx); err != nil {
@@ -193,6 +193,9 @@ func TestMigrationFromVersion2PreservesAssignments(t *testing.T) {
 	var count int
 	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='assignments_image_id'`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("index count=%d err=%v", count, err)
+	}
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('assignments') WHERE name='send_attempts'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("send_attempts column count=%d err=%v", count, err)
 	}
 	p, err := s.Pending(ctx, a[1].DeviceUUID)
 	if err != nil || p.ID != a[1].ID {

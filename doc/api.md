@@ -83,6 +83,10 @@ Assignment states are:
 - `sent` — written successfully to the tablet connection.
 - `delivered` — echoed by the tablet as its display-state ID.
 - `error` — processing or writing failed; a later check-in may retry it.
+- `failed` — not confirmed after nine delivery attempts; retried only if a
+  newer assignment replaces it.
+
+`send_attempts` counts the frame's lifetime delivery attempts.
 
 ### `GET /api/v1/devices/{uuid}/image`
 

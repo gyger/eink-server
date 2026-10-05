@@ -51,7 +51,9 @@ PV3 listener.
    VSS grayscale range mapping; `smooth` retains 3× supersampling and ordinary
    grayscale quantization.
 7. The gateway sends the changed rectangle as one logical image when the tablet
-   has confirmed the preceding frame. Otherwise it sends a full-screen frame.
+   has confirmed the preceding frame, either by echoing its frame ID in a
+   status or by acknowledging its record. Otherwise it sends a full-screen
+   frame.
 8. The assignment becomes `sent`. An immediate type-1 reply records
    `acknowledged_at`; a later tablet status that echoes the frame ID changes it
    to `delivered`.
@@ -59,8 +61,12 @@ PV3 listener.
 Only the newest assignment is relevant to a device. Once it is delivered,
 older unfinished assignments are never replayed. Unconfirmed frames retry at
 15-second intervals, up to three attempts per connection; exhaustion records an
-error and closes the connection so the tablet can reconnect. Interrupted writes
-also close the connection to avoid continuing a partially written record.
+error and closes the connection so the tablet can reconnect. After nine
+attempts across connections the assignment becomes `failed` and is not sent
+again; a newer assignment resumes delivery, and a late status echo still marks
+it delivered. A frame that fails to render is marked `error` once per
+connection and never counts as an attempt or forces a reconnect. Interrupted
+writes close the connection to avoid continuing a partially written record.
 On reconnect, a previously delivered desired frame is requeued if the tablet
 reports a different display state.
 
@@ -104,7 +110,7 @@ Frame history is pruned at startup and hourly, retaining the latest 100
 assignments per tablet plus its currently displayed frame. Related touch maps
 and widget event claims are retained with those frames, and unreferenced image
 blobs are removed. SQLite reuses freed pages; pruning does not shrink the file.
-The singleton `schema_version` row is currently version 3. Startup applies
+The singleton `schema_version` row is currently version 4. Startup applies
 pending migrations transactionally and refuses databases created by a newer
 server. Version 1 remains editable until the first release; after that, schema
 changes must append a new numbered migration.

@@ -26,7 +26,7 @@ type Store struct {
 // SchemaVersion is the newest database schema understood by this binary.
 // Keep this migration editable until the first release. After release, schema
 // changes must append a new numbered migration instead.
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 type Device struct {
 	UUID         string             `json:"uuid"`
@@ -56,6 +56,7 @@ type Assignment struct {
 	DeliveredAt    *time.Time `json:"delivered_at,omitempty"`
 	AcknowledgedAt *time.Time `json:"acknowledged_at,omitempty"`
 	LastError      string     `json:"last_error,omitempty"`
+	SendAttempts   int        `json:"send_attempts"`
 }
 
 type Pending struct {
@@ -183,6 +184,7 @@ CREATE TABLE IF NOT EXISTS widget_event_consumptions (
 );
 `,
 	3: `CREATE INDEX IF NOT EXISTS assignments_image_id ON assignments(image_id);`,
+	4: `ALTER TABLE assignments ADD COLUMN send_attempts INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func nowString() string            { return time.Now().UTC().Format(time.RFC3339Nano) }
@@ -365,7 +367,7 @@ func randomID() uint32 {
 func (s *Store) Pending(ctx context.Context, uuid string) (Pending, error) {
 	var p Pending
 	var raw, queued string
-	err := s.DB.QueryRowContext(ctx, `SELECT a.id,a.device_uuid,a.frame_id,a.state,a.queued_at,a.last_error,d.width,d.height,i.content_type,i.source,a.settings_json FROM assignments a JOIN images i ON i.id=a.image_id JOIN devices d ON d.uuid=a.device_uuid WHERE a.device_uuid=? AND a.id=(SELECT MAX(id) FROM assignments WHERE device_uuid=a.device_uuid) AND a.state!='delivered'`, uuid).Scan(&p.ID, &p.DeviceUUID, &p.FrameID, &p.State, &queued, &p.LastError, &p.Width, &p.Height, &p.ContentType, &p.Source, &raw)
+	err := s.DB.QueryRowContext(ctx, `SELECT a.id,a.device_uuid,a.frame_id,a.state,a.queued_at,a.last_error,a.send_attempts,d.width,d.height,i.content_type,i.source,a.settings_json FROM assignments a JOIN images i ON i.id=a.image_id JOIN devices d ON d.uuid=a.device_uuid WHERE a.device_uuid=? AND a.id=(SELECT MAX(id) FROM assignments WHERE device_uuid=a.device_uuid) AND a.state NOT IN ('delivered','failed')`, uuid).Scan(&p.ID, &p.DeviceUUID, &p.FrameID, &p.State, &queued, &p.LastError, &p.SendAttempts, &p.Width, &p.Height, &p.ContentType, &p.Source, &raw)
 	p.QueuedAt = parseTime(queued)
 	if err == nil {
 		p.Settings, err = imageproc.ParseSettings(raw)
@@ -382,8 +384,17 @@ AND state='delivered' AND frame_id!=?`, uuid, uuid, displayState)
 	return err
 }
 
+// PrepareSend records the wire sequence of an attempt and counts it toward the
+// assignment's lifetime delivery attempts.
 func (s *Store) PrepareSend(ctx context.Context, id int64, sequence uint32) error {
-	_, err := s.DB.ExecContext(ctx, `UPDATE assignments SET sent_sequence=?,acknowledged_at=NULL WHERE id=?`, sequence, id)
+	_, err := s.DB.ExecContext(ctx, `UPDATE assignments SET sent_sequence=?,acknowledged_at=NULL,send_attempts=send_attempts+1 WHERE id=?`, sequence, id)
+	return err
+}
+
+// MarkFailed stops delivery of an assignment until a newer one is queued. A
+// later status that echoes its frame ID still marks it delivered.
+func (s *Store) MarkFailed(ctx context.Context, id int64, reason string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE assignments SET state='failed',last_error=? WHERE id=? AND state!='delivered'`, reason, id)
 	return err
 }
 
@@ -412,7 +423,7 @@ func (s *Store) MarkAcknowledged(ctx context.Context, uuid string, sequence uint
 func (s *Store) latestAssignment(ctx context.Context, uuid string) (*Assignment, error) {
 	var a Assignment
 	var queued, delivered, acknowledged sql.NullString
-	err := s.DB.QueryRowContext(ctx, `SELECT id,device_uuid,frame_id,state,queued_at,delivered_at,acknowledged_at,last_error FROM assignments WHERE device_uuid=? ORDER BY id DESC LIMIT 1`, uuid).Scan(&a.ID, &a.DeviceUUID, &a.FrameID, &a.State, &queued, &delivered, &acknowledged, &a.LastError)
+	err := s.DB.QueryRowContext(ctx, `SELECT id,device_uuid,frame_id,state,queued_at,delivered_at,acknowledged_at,last_error,send_attempts FROM assignments WHERE device_uuid=? ORDER BY id DESC LIMIT 1`, uuid).Scan(&a.ID, &a.DeviceUUID, &a.FrameID, &a.State, &queued, &delivered, &acknowledged, &a.LastError, &a.SendAttempts)
 	if err != nil {
 		return nil, err
 	}
