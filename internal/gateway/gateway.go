@@ -392,6 +392,12 @@ func (g *Gateway) deliverLatest(ctx context.Context, active *session) bool {
 		return false
 	}
 	if active.attemptID == pending.ID {
+		// The tablet acknowledges each image record it receives. Resending an
+		// acknowledged frame only forces another full E Ink redraw, so wait for
+		// the status echo or a newer frame instead.
+		if active.lastFrameID == pending.FrameID && active.acknowledged(active.lastSentSeq) {
+			return false
+		}
 		if time.Since(active.lastAttemptAt) < deliveryRetryInterval {
 			return false
 		}

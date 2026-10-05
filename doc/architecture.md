@@ -59,8 +59,11 @@ PV3 listener.
    to `delivered`.
 
 Only the newest assignment is relevant to a device. Once it is delivered,
-older unfinished assignments are never replayed. Unconfirmed frames retry at
-15-second intervals, up to three attempts per connection; exhaustion records an
+older unfinished assignments are never replayed. A frame the tablet has
+acknowledged on the current connection is not resent, because each resend
+forces a full E Ink redraw; it becomes `delivered` when a status echoes its
+frame ID. Unacknowledged frames retry at 15-second intervals, up to three
+attempts per connection; exhaustion records an
 error and closes the connection so the tablet can reconnect. After nine
 attempts across connections the assignment becomes `failed` and is not sent
 again; a newer assignment resumes delivery, and a late status echo still marks

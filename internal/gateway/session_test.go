@@ -348,3 +348,51 @@ func TestClosedSessionSkipsDelivery(t *testing.T) {
 		t.Fatal("closed session must not render or write")
 	}
 }
+
+func TestAcknowledgedFrameIsNotResent(t *testing.T) {
+	g, st := testGateway(t)
+	ctx := context.Background()
+	queueFrame(t, g, st)
+	c := &recordingConn{}
+	active := &session{conn: c, status: st}
+	if !g.deliverLatest(ctx, active) {
+		t.Fatal("expected send")
+	}
+	wire := readImage(t, c)
+	active.noteAcknowledged(binary.LittleEndian.Uint32(wire[24:28]))
+	for range maxDeliveryAttempts + 1 {
+		active.lastAttemptAt = time.Now().Add(-deliveryRetryInterval)
+		if g.deliverLatest(ctx, active) {
+			t.Fatal("acknowledged frame was resent")
+		}
+	}
+	if c.Len() != 0 || c.closed || active.attempts != 1 {
+		t.Fatalf("written=%d closed=%v attempts=%d", c.Len(), c.closed, active.attempts)
+	}
+	// A newer frame is still delivered.
+	next := queueFrame(t, g, st)
+	if !g.deliverLatest(ctx, active) {
+		t.Fatal("new frame not sent")
+	}
+	if got := binary.LittleEndian.Uint32(readImage(t, c)[36:40]); got != next.FrameID {
+		t.Fatalf("sent frame=%d want=%d", got, next.FrameID)
+	}
+}
+
+func TestUnacknowledgedFrameIsResentAfterAnAcknowledgedOne(t *testing.T) {
+	g, st := testGateway(t)
+	ctx := context.Background()
+	queueFrame(t, g, st)
+	c := &recordingConn{}
+	active := &session{conn: c, status: st}
+	g.deliverLatest(ctx, active)
+	active.noteAcknowledged(binary.LittleEndian.Uint32(readImage(t, c)[24:28]))
+	queueFrame(t, g, st)
+	g.deliverLatest(ctx, active)
+	readImage(t, c)
+	active.lastAttemptAt = time.Now().Add(-deliveryRetryInterval)
+	if !g.deliverLatest(ctx, active) {
+		t.Fatal("unacknowledged frame was not retried")
+	}
+	readImage(t, c)
+}
