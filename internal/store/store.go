@@ -486,24 +486,25 @@ func (s *Store) AllUUIDs(ctx context.Context) ([]string, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) DesiredPreview(ctx context.Context, uuid string) ([]byte, string, error) {
-	var src, settings string
-	var data []byte
-	var width, height int
-	err := s.DB.QueryRowContext(ctx, `SELECT i.content_type,i.source,a.settings_json,d.width,d.height FROM assignments a JOIN images i ON i.id=a.image_id JOIN devices d ON d.uuid=a.device_uuid WHERE a.device_uuid=? ORDER BY a.id DESC LIMIT 1`, uuid).Scan(&src, &data, &settings, &width, &height)
+// DesiredImage is the newest assignment's source and the processing inputs
+// needed to preview it.
+type DesiredImage struct {
+	AssignmentID  int64
+	ContentType   string
+	Source        []byte
+	Settings      imageproc.Settings
+	Width, Height int
+}
+
+func (s *Store) DesiredImage(ctx context.Context, uuid string) (DesiredImage, error) {
+	var d DesiredImage
+	var settings string
+	err := s.DB.QueryRowContext(ctx, `SELECT a.id,i.content_type,i.source,a.settings_json,d.width,d.height FROM assignments a JOIN images i ON i.id=a.image_id JOIN devices d ON d.uuid=a.device_uuid WHERE a.device_uuid=? ORDER BY a.id DESC LIMIT 1`, uuid).Scan(&d.AssignmentID, &d.ContentType, &d.Source, &settings, &d.Width, &d.Height)
 	if err != nil {
-		return nil, "", err
+		return d, err
 	}
-	img, err := imageproc.Decode(data, src)
-	if err != nil {
-		return nil, "", err
-	}
-	set, err := imageproc.ParseSettings(settings)
-	if err != nil {
-		return nil, "", err
-	}
-	_, preview, err := imageproc.Process(img, width, height, set)
-	return preview, "image/png", err
+	d.Settings, err = imageproc.ParseSettings(settings)
+	return d, err
 }
 
 func (s *Store) Debug() string { return fmt.Sprintf("sqlite store %p", s) }

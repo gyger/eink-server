@@ -16,6 +16,7 @@ import (
 	"eink-server/internal/action"
 	"eink-server/internal/design"
 	"eink-server/internal/events"
+	"eink-server/internal/imageproc"
 	"eink-server/internal/pv3"
 	"eink-server/internal/store"
 )
@@ -163,5 +164,54 @@ func TestSVGDesignAndActionAPIs(t *testing.T) {
 	}
 	if _, err := s.ActiveDesign(context.Background(), uuid); !store.IsNotFound(err) {
 		t.Fatalf("active design survived PNG upload: %v", err)
+	}
+}
+
+func TestPreviewIsCachedPerAssignment(t *testing.T) {
+	api, s, _ := testAPI(t)
+	uuid := "00112233-4455-6677-8899-aabbccddeeff"
+	get := func() []byte {
+		rec := httptest.NewRecorder()
+		api.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/devices/"+uuid+"/image", nil))
+		if rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
+			t.Fatalf("status=%d type=%s body=%s", rec.Code, rec.Header().Get("Content-Type"), rec.Body.String())
+		}
+		return rec.Body.Bytes()
+	}
+	rec := httptest.NewRecorder()
+	api.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/devices/"+uuid+"/image", nil))
+	if rec.Code != 404 {
+		t.Fatalf("empty device status=%d", rec.Code)
+	}
+	light := image.NewGray(image.Rect(0, 0, 8, 4))
+	for i := range light.Pix {
+		light.Pix[i] = 255
+	}
+	var body bytes.Buffer
+	if err := png.Encode(&body, light); err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.CreateAssignments(context.Background(), []string{uuid}, "image/png", body.Bytes(), imageproc.Override{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	one := get()
+	if cached := api.previews[uuid]; cached.assignmentID != first[0].ID || !bytes.Equal(cached.png, one) {
+		t.Fatalf("cache=%+v", cached)
+	}
+	if !bytes.Equal(get(), one) {
+		t.Fatal("cached preview changed")
+	}
+	body.Reset()
+	if err := png.Encode(&body, image.NewGray(image.Rect(0, 0, 8, 4))); err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.CreateAssignments(context.Background(), []string{uuid}, "image/png", body.Bytes(), imageproc.Override{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	two := get()
+	if bytes.Equal(two, one) || api.previews[uuid].assignmentID != second[0].ID {
+		t.Fatal("preview not refreshed for new assignment")
 	}
 }

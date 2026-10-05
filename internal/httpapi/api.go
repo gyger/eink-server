@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"eink-server/internal/design"
@@ -31,6 +32,17 @@ type API struct {
 	Connections Connections
 	Designs     *design.Service
 	Log         *slog.Logger
+
+	previewMu sync.Mutex
+	previews  map[string]preview
+}
+
+// preview caches one processed PNG per device, keyed by the assignment and
+// display size it was produced for.
+type preview struct {
+	assignmentID  int64
+	width, height int
+	png           []byte
 }
 
 func (a *API) Handler() http.Handler {
@@ -263,7 +275,8 @@ func parseOverride(r *http.Request) (imageproc.Override, error) {
 }
 
 func (a *API) preview(w http.ResponseWriter, r *http.Request) {
-	data, typ, err := a.Store.DesiredPreview(r.Context(), r.PathValue("uuid"))
+	uuid := r.PathValue("uuid")
+	desired, err := a.Store.DesiredImage(r.Context(), uuid)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(w, 404, "image_not_found", "device has no desired image")
 		return
@@ -272,9 +285,38 @@ func (a *API) preview(w http.ResponseWriter, r *http.Request) {
 		problem(w, 500, "preview_failed", err.Error())
 		return
 	}
-	w.Header().Set("Content-Type", typ)
+	data, err := a.previewPNG(uuid, desired)
+	if err != nil {
+		problem(w, 500, "preview_failed", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write(data)
+}
+
+func (a *API) previewPNG(uuid string, desired store.DesiredImage) ([]byte, error) {
+	a.previewMu.Lock()
+	cached, ok := a.previews[uuid]
+	a.previewMu.Unlock()
+	if ok && cached.assignmentID == desired.AssignmentID && cached.width == desired.Width && cached.height == desired.Height {
+		return cached.png, nil
+	}
+	img, err := imageproc.Decode(desired.Source, desired.ContentType)
+	if err != nil {
+		return nil, err
+	}
+	_, png, err := imageproc.Process(img, desired.Width, desired.Height, desired.Settings)
+	if err != nil {
+		return nil, err
+	}
+	a.previewMu.Lock()
+	if a.previews == nil {
+		a.previews = map[string]preview{}
+	}
+	a.previews[uuid] = preview{assignmentID: desired.AssignmentID, width: desired.Width, height: desired.Height, png: png}
+	a.previewMu.Unlock()
+	return png, nil
 }
 
 func (a *API) eventHistory(w http.ResponseWriter, r *http.Request) {
