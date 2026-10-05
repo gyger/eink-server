@@ -64,7 +64,8 @@ type Service struct {
 
 const builtinStatus = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 758" data-refresh="1m">
 <rect width="1024" height="758" fill="white"/>
-<text x="250" y="405" text-anchor="middle" font-family="Noto Sans" font-size="154" font-weight="400" data-value="${system.time}">18:30</text>
+<text x="250" y="385" text-anchor="middle" font-family="Noto Sans" font-size="154" font-weight="400" data-value="${system.time}">18:30</text>
+<text x="250" y="450" text-anchor="middle" font-family="Noto Sans" font-size="40" font-weight="500" data-value="${system.date_local}">05.10.2026</text>
 <line x1="500" y1="120" x2="500" y2="625" stroke="#b8b8b8" stroke-width="2"/>
 <style>.calendar-title{font-weight:500}.calendar-weekday{font-weight:600}.calendar-outside{fill:#999}.calendar-today{fill:#000}.calendar-today-text{fill:#fff}</style>
 <g id="status-calendar" data-widget="calendar" data-navigation="true" data-x="520" data-y="55" data-width="460" data-height="570" data-week-start="monday" data-spillover="true"/>
@@ -143,7 +144,7 @@ func (s *Service) validate(source []byte) error {
 }
 
 func sampleValues(system string) Values {
-	return Values{"system.name": system, "system.time": "18:30", "system.date": "2026-02-12", "system.locale": "de-DE", "device.name": "Tablet", "device.location": "Location", "device.uuid": "00000000-0000-0000-0000-000000000000", "device.battery": "100", "device.temperature": "23", "device.humidity": "42", "device.width": "1024", "device.height": "758", "device.firmware": "0.0.0", "device.display_state": "0"}
+	return Values{"system.name": system, "system.time": "18:30", "system.date": "2026-02-12", "system.date_local": "12.02.2026", "system.locale": "de-DE", "device.name": "Tablet", "device.location": "Location", "device.uuid": "00000000-0000-0000-0000-000000000000", "device.battery": "100", "device.temperature": "23", "device.humidity": "42", "device.width": "1024", "device.height": "758", "device.firmware": "0.0.0", "device.display_state": "0"}
 }
 
 func (s *Service) Values(d store.Device) Values {
@@ -167,7 +168,15 @@ func (s *Service) valuesAt(d store.Device, now time.Time) Values {
 		zone = time.UTC
 	}
 	local := now.In(zone)
-	return Values{"system.name": s.SystemName, "system.time": local.Format("15:04"), "system.date": local.Format("2006-01-02"), "system.locale": d.Locale, "device.name": name, "device.location": d.Location, "device.uuid": d.UUID, "device.battery": strconv.FormatUint(uint64(d.Battery), 10), "device.temperature": strconv.FormatInt(int64(d.Temperature), 10), "device.humidity": strconv.FormatUint(uint64(d.Humidity), 10), "device.width": strconv.FormatUint(uint64(d.Width), 10), "device.height": strconv.FormatUint(uint64(d.Height), 10), "device.firmware": d.Firmware, "device.display_state": strconv.FormatUint(uint64(d.DisplayState), 10)}
+	return Values{"system.name": s.SystemName, "system.time": local.Format("15:04"), "system.date": local.Format("2006-01-02"), "system.date_local": local.Format(localDateLayout(d.Locale)), "system.locale": d.Locale, "device.name": name, "device.location": d.Location, "device.uuid": d.UUID, "device.battery": strconv.FormatUint(uint64(d.Battery), 10), "device.temperature": strconv.FormatInt(int64(d.Temperature), 10), "device.humidity": strconv.FormatUint(uint64(d.Humidity), 10), "device.width": strconv.FormatUint(uint64(d.Width), 10), "device.height": strconv.FormatUint(uint64(d.Height), 10), "device.firmware": d.Firmware, "device.display_state": strconv.FormatUint(uint64(d.DisplayState), 10)}
+}
+
+// localDateLayout returns the numeric short date layout for a supported locale.
+func localDateLayout(locale string) string {
+	if locale == "en-GB" {
+		return "02/01/2006"
+	}
+	return "02.01.2006"
 }
 
 func (s *Service) Designs(ctx context.Context) ([]store.Design, error) { return s.Store.Designs(ctx) }

@@ -141,8 +141,12 @@ func TestValuesUseDeviceTimezoneAcrossDST(t *testing.T) {
 	device := store.Device{UUID: "00112233-4455-6677-8899-aabbccddeeff", Timezone: "Europe/Berlin", Locale: "de-DE"}
 	before := service.valuesAt(device, time.Date(2026, 3, 29, 0, 59, 0, 0, time.UTC))
 	after := service.valuesAt(device, time.Date(2026, 3, 29, 1, 1, 0, 0, time.UTC))
-	if before["system.time"] != "01:59" || after["system.time"] != "03:01" || after["system.date"] != "2026-03-29" || after["system.locale"] != "de-DE" {
+	if before["system.time"] != "01:59" || after["system.time"] != "03:01" || after["system.date"] != "2026-03-29" || after["system.date_local"] != "29.03.2026" || after["system.locale"] != "de-DE" {
 		t.Fatalf("before=%v after=%v", before, after)
+	}
+	device.Locale = "en-GB"
+	if got := service.valuesAt(device, time.Date(2026, 3, 29, 1, 1, 0, 0, time.UTC))["system.date_local"]; got != "29/03/2026" {
+		t.Fatalf("en-GB date=%q", got)
 	}
 }
 

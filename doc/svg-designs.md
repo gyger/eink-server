@@ -25,11 +25,12 @@ rendering while leaving useful placeholder text for an SVG editor:
 ```
 
 Supported variables are `system.name`, `system.time`, `system.date`,
-`system.locale`, `device.name`, `device.uuid`, `device.location`, `device.battery`, `device.temperature`,
+`system.date_local`, `system.locale`, `device.name`, `device.uuid`, `device.location`, `device.battery`, `device.temperature`,
 `device.humidity`, `device.width`, `device.height`, `device.firmware`, and
 `device.display_state`. `system.time` is the tablet-local time in `HH:MM`
 format in the tablet's configured IANA timezone; `system.date` uses
-`YYYY-MM-DD`. Unknown values reject the design. A new frame is queued only when a
+`YYYY-MM-DD` and `system.date_local` the locale's numeric form (`DD.MM.YYYY`
+for `de-DE`, `DD/MM/YYYY` for `en-GB`). Unknown values reject the design. A new frame is queued only when a
 value actually referenced by the active design changes.
 
 ## Calendar widget
