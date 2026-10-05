@@ -194,22 +194,17 @@ func (s *Store) UpsertStatus(ctx context.Context, st pv3.Status) (bool, error) {
 	now := nowString()
 	raw, _ := json.Marshal(st.Fields)
 	defaults := s.DefaultSettings.JSON()
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO devices(uuid,name,timezone,locale,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,status_json,settings_json)
+	// The upsert returns the stored first_seen; it equals now only for a new row.
+	var first string
+	err := s.DB.QueryRowContext(ctx, `INSERT INTO devices(uuid,name,timezone,locale,first_seen,last_seen,battery,temperature,humidity,width,height,firmware,display_state,status_json,settings_json)
 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uuid) DO UPDATE SET last_seen=excluded.last_seen,battery=excluded.battery,
-temperature=excluded.temperature,humidity=excluded.humidity,width=excluded.width,height=excluded.height,firmware=excluded.firmware,display_state=excluded.display_state,status_json=excluded.status_json`,
-		st.UUID, "", s.DefaultTimezone, s.DefaultLocale, now, now, st.Battery, st.Temperature, st.Humidity, st.Width, st.Height, st.Firmware, st.DisplayState, string(raw), defaults)
+temperature=excluded.temperature,humidity=excluded.humidity,width=excluded.width,height=excluded.height,firmware=excluded.firmware,display_state=excluded.display_state,status_json=excluded.status_json
+RETURNING first_seen`,
+		st.UUID, "", s.DefaultTimezone, s.DefaultLocale, now, now, st.Battery, st.Temperature, st.Humidity, st.Width, st.Height, st.Firmware, st.DisplayState, string(raw), defaults).Scan(&first)
 	if err != nil {
 		return false, err
 	}
-	n, _ := res.RowsAffected()
-	// SQLite reports an affected row for inserts and updates; first_seen equality identifies a new row.
-	var first string
-	if err := s.DB.QueryRowContext(ctx, "SELECT first_seen FROM devices WHERE uuid=?", st.UUID).Scan(&first); err != nil {
-		return false, err
-	}
-	isNew := first == now
-	_ = n
-	return isNew, s.sampleStatus(ctx, st, string(raw), now)
+	return first == now, s.sampleStatus(ctx, st, string(raw), now)
 }
 
 func (s *Store) MarkDelivered(ctx context.Context, uuid string, frameID uint32) (int64, bool, error) {
@@ -229,13 +224,11 @@ func (s *Store) MarkDelivered(ctx context.Context, uuid string, frameID uint32) 
 }
 
 func (s *Store) sampleStatus(ctx context.Context, st pv3.Status, raw, now string) error {
-	var previous string
-	err := s.DB.QueryRowContext(ctx, `SELECT status_json FROM status_samples WHERE device_uuid=? ORDER BY id DESC LIMIT 1`, st.UUID).Scan(&previous)
+	var previous, last string
+	err := s.DB.QueryRowContext(ctx, `SELECT status_json,created_at FROM status_samples WHERE device_uuid=? ORDER BY id DESC LIMIT 1`, st.UUID).Scan(&previous, &last)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	var last string
-	_ = s.DB.QueryRowContext(ctx, `SELECT created_at FROM status_samples WHERE device_uuid=? ORDER BY id DESC LIMIT 1`, st.UUID).Scan(&last)
 	lt := parseTime(last)
 	if previous != raw || lt.IsZero() || time.Since(lt) >= 15*time.Minute {
 		_, err = s.DB.ExecContext(ctx, `INSERT INTO status_samples(device_uuid,status_json,created_at) VALUES(?,?,?)`, st.UUID, raw, now)
@@ -450,8 +443,6 @@ func (s *Store) AddEvent(ctx context.Context, uuid, typ string, data any) (Event
 		return Event{}, err
 	}
 	id, _ := res.LastInsertId()
-	_, _ = s.DB.ExecContext(ctx, `DELETE FROM events WHERE created_at < datetime('now','-7 days') OR id <= (SELECT COALESCE(MAX(id),0)-10000 FROM events)`)
-	_, _ = s.DB.ExecContext(ctx, `DELETE FROM status_samples WHERE created_at < datetime('now','-7 days')`)
 	return Event{ID: id, DeviceUUID: uuid, Type: typ, Data: raw, CreatedAt: parseTime(now)}, nil
 }
 

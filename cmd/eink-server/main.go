@@ -88,8 +88,8 @@ func main() {
 		ticker := time.NewTicker(time.Hour)
 		defer ticker.Stop()
 		for {
-			if err := db.PruneFrameHistory(ctx); err != nil && ctx.Err() == nil {
-				log.Warn("pruning frame history", "error", err)
+			if err := db.PruneHistory(ctx); err != nil && ctx.Err() == nil {
+				log.Warn("pruning history", "error", err)
 			}
 			select {
 			case <-ctx.Done():

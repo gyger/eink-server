@@ -104,9 +104,10 @@ The default database is `./data/eink.db`. It contains:
 - Reusable and active SVG designs, refresh metadata, webhook actions, and
   interaction maps tied to exact frame IDs.
 
-SQLite runs in WAL mode with foreign keys and a busy timeout. Status samples and
-events are pruned after seven days; events are additionally capped at 10,000.
-Frame history is pruned at startup and hourly, retaining the latest 100
+SQLite runs in WAL mode with foreign keys and a busy timeout. A maintenance
+job runs at startup and hourly. It prunes status samples and events after
+seven days, additionally caps events at 10,000, and prunes frame history,
+retaining the latest 100
 assignments per tablet plus its currently displayed frame. Related touch maps
 and widget event claims are retained with those frames, and unreferenced image
 blobs are removed. SQLite reuses freed pages; pruning does not shrink the file.

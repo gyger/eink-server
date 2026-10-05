@@ -69,3 +69,34 @@ func TestPruneFrameHistoryPreservesDesiredDisplayedAndSharedImages(t *testing.T)
 		t.Fatalf("second cleanup: %v", err)
 	}
 }
+
+func TestPruneEventHistoryKeepsRecentEvents(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(t.TempDir() + "/events.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.DB.Exec(`INSERT INTO events(device_uuid,type,data_json,created_at) VALUES('', 'old', '{}', '2000-01-01T00:00:00Z');
+INSERT INTO status_samples(device_uuid,status_json,created_at) VALUES('x','{}','2000-01-01T00:00:00Z'), ('x','{}',?)`, nowString()); err != nil {
+		t.Fatal(err)
+	}
+	for i := range EventLimit + 5 {
+		if _, err := s.AddEvent(ctx, "", "test", i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.PruneEventHistory(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&count); err != nil || count != EventLimit {
+		t.Fatalf("events=%d want=%d err=%v", count, EventLimit, err)
+	}
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM events WHERE type='old'`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("old events=%d err=%v", count, err)
+	}
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM status_samples`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("samples=%d err=%v", count, err)
+	}
+}
